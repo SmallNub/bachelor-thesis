@@ -18,4 +18,4 @@ cd "$TMPDIR"/bachelor-thesis/PAG-main
 
 bash full_scripts/full_lexical_ripor_evaluate.sh
 
-cp -r "$TMPDIR"/bacheleor-thesis $HOME/test_output
+cp -r "$TMPDIR"/bachelor-thesis $HOME/test_output
