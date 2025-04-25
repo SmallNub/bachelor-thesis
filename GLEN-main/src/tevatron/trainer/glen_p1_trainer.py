@@ -12,7 +12,8 @@ from typing import Dict, List, Tuple, Optional, Any, Union
 
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from transformers import AdamW, get_linear_schedule_with_warmup
+from torch.optim import AdamW
+from transformers import get_linear_schedule_with_warmup
 from transformers.trainer import Trainer
 from transformers.trainer_utils import speed_metrics
 from transformers.trainer_pt_utils import find_batch_size
