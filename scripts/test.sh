@@ -11,7 +11,7 @@ source $HOME/bachelor-thesis/scripts/init_job.sh
 # NQ320k
 
 # Estimated duration: 9 minutes
-bash scripts/eval_make_docid_glen_nq.sh
+# bash scripts/eval_make_docid_glen_nq.sh
 
 # Estimated duration: 12 minutes
 bash scripts/eval_inference_query_glen_nq.sh
@@ -25,4 +25,5 @@ bash scripts/eval_inference_query_glen_nq.sh
 # bash scripts/eval_inference_query_glen_marco.sh
 
 # Copy results back to home
-cp -r "$TMPDIR"/bachelor-thesis $HOME/test_output
+cp -r "$TMPDIR"/bachelor-thesis/GLEN-main/logs $HOME/test_output
+cp -r "$TMPDIR"/bachelor-thesis/GLEN-main/checkpoint $HOME/test_output
