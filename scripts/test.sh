@@ -25,5 +25,5 @@ bash scripts/eval_inference_query_glen_nq.sh
 # bash scripts/eval_inference_query_glen_marco.sh
 
 # Copy results back to home
-cp -r "$TMPDIR"/bachelor-thesis/GLEN-main/logs $HOME/test_output
-cp -r "$TMPDIR"/bachelor-thesis/GLEN-main/checkpoint $HOME/test_output
+# cp -rf "$TMPDIR"/bachelor-thesis/GLEN-main/checkpoint $HOME/test_output
+cp -rf "$TMPDIR"/bachelor-thesis/GLEN-main/logs $HOME/test_output

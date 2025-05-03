@@ -520,7 +520,7 @@ class GLENP2EncodeDataset(Dataset):
                         aug_query_list.append(augment(query))
                 result.append(
                     {
-                        "query": query,
+                        "query": f"think step by step. {query}",
                         "oldid": row["oldid"],
                         "target": rank1,
                         "rank": list_sum,
