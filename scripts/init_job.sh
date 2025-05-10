@@ -14,6 +14,3 @@ source "$TMPDIR"/venv_glen/bin/activate
 # Copy data and code from home to compute
 # Better I/O and preserve file structure
 cp -r $HOME/bachelor-thesis "$TMPDIR"
-
-# Use GLEN-main as the working directory
-cd "$TMPDIR"/bachelor-thesis/GLEN-main
