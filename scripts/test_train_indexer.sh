@@ -1,19 +1,23 @@
 #!/bin/bash
-#SBATCH --job-name="training indexer"
+#SBATCH --job-name=train_finqa_indexer
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=4
 #SBATCH --cpus-per-task=18
-#SBATCH --gpus=1
+#SBATCH --gpus=4
 #SBATCH --partition=gpu_a100
 #SBATCH --time=00:30:00
-#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=steven.dong@student.uva.nl
 #SBATCH --output=logs/indexing_%j.out
 #SBATCH --error=logs/indexing_%j.err
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-deepspeed code/train_indexer.py --deepspeed ds_config.json
+# Change working directory
+cd "$TMPDIR"/bachelor-thesis
+
+deepspeed --num-gpus=4 code/train_indexer.py --deepspeed ds_config.json
 
 # Copy results back to home
-cp -rf "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis
+cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
+cp -rp "$TMPDIR"/bachelor-thesis/logs $HOME/bachelor-thesis/
