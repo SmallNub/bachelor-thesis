@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=18
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_a100
-#SBATCH --time=00:30:00
+#SBATCH --time=00:10:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=steven.dong@student.uva.nl
 #SBATCH --output=logs/indexing_%j.out
@@ -16,7 +16,7 @@ source $HOME/bachelor-thesis/scripts/init_job.sh
 # Change working directory
 cd "$TMPDIR"/bachelor-thesis
 
-deepspeed --num-gpus=4 code/train_indexer.py --deepspeed ds_config.json
+deepspeed --num-gpus=1 code/train_indexer.py --deepspeed ds_config.json
 
 # Copy results back to home
 cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
