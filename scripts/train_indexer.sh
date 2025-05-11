@@ -16,7 +16,7 @@ source $HOME/bachelor-thesis/scripts/init_job.sh
 # Change working directory
 cd "$TMPDIR"/bachelor-thesis
 
-deepspeed --num-gpus=1 code/train_indexer.py --deepspeed ds_config.json
+deepspeed --num_gpus=1 code/train_indexer.py --deepspeed ds_config.json
 
 # Copy results back to home
 cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
