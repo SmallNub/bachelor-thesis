@@ -8,8 +8,8 @@
 #SBATCH --time=00:10:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=steven.dong@student.uva.nl
-#SBATCH --output=logs/indexing_%j.out
-#SBATCH --error=logs/indexing_%j.err
+#SBATCH --output=slurm/indexing_%j.out
+#SBATCH --error=slurm/indexing_%j.err
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
