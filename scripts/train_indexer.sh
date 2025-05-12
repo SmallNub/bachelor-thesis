@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=18
 #SBATCH --gpus-per-node=1
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --time=00:10:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=steven.dong@student.uva.nl
