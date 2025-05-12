@@ -1,5 +1,6 @@
 import os
 import json
+import multiprocessing
 import torch
 from datasets import load_dataset
 from transformers import (
@@ -20,9 +21,12 @@ OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
     ds_config = json.load(f)
 
-# Detect number of GPUs
-world_size = torch.cuda.device_count()
-print(f"Using {world_size} CUDA device(s)")
+# Detect number of CPUs and GPUs
+num_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", multiprocessing.cpu_count()))
+print(f"Using {num_cpus} CPU core(s)")
+
+num_gpus = torch.cuda.device_count()
+print(f"Using {num_gpus} CUDA device(s)")
 
 # 1. Load tokenizer & model + PEFT LoRA
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_fast=True)
@@ -52,12 +56,14 @@ def preprocess_fn(example):
         truncation=True,
         padding="max_length",
         max_length=4096,
+        return_tensors="pt",
     )
     targets = tokenizer(
         example["id"],
         truncation=True,
         padding="max_length",
         max_length=8,
+        return_tensors="pt",
     )
     return {
         "input_ids": inputs.input_ids,
@@ -69,8 +75,8 @@ def preprocess_fn(example):
 # Map & set format for PyTorch
 tokenized_ds = raw_ds.map(
     preprocess_fn,
-    batched=True,
     remove_columns=raw_ds.column_names,
+    num_proc=num_cpus,
 )
 tokenized_ds.set_format(type="torch")
 
