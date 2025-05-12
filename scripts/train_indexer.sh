@@ -2,7 +2,7 @@
 #SBATCH --job-name=train_finqa_indexer
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=4
+#SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --time=00:30:00
 #SBATCH --output=slurm/indexing_%j.out

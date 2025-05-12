@@ -85,8 +85,8 @@ data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=4,
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=8,
     optim="adamw_torch",
     learning_rate=1e-5,
     num_train_epochs=5,
