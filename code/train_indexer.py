@@ -53,22 +53,16 @@ raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 def preprocess_fn(example):
     inputs = tokenizer(
         example["full_text"],
-        truncation=True,
-        padding="max_length",
-        max_length=4096,
         return_tensors="pt",
     )
     targets = tokenizer(
         example["id"],
-        truncation=True,
-        padding="max_length",
-        max_length=8,
         return_tensors="pt",
     )
     return {
-        "input_ids": inputs.input_ids,
-        "attention_mask": inputs.attention_mask,
-        "labels": targets.input_ids,
+        "input_ids": inputs.input_ids.squeeze(0),
+        "attention_mask": inputs.attention_mask.squeeze(0),
+        "labels": targets.input_ids.squeeze(0),
     }
 
 
