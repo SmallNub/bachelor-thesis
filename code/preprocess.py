@@ -42,7 +42,7 @@ def reformat_data(input_file_path: str, output_file_path: str):
     # Drop the unused columns
     df = raw_df[USED_COLUMNS]
 
-    df.to_csv(output_file_path)
+    df.to_csv(output_file_path, index=False)
     return df
 
 

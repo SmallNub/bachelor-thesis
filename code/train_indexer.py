@@ -10,7 +10,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, TaskType
 
-from config import DATA_TRAIN_PROC, MODELS_DIR
+from config import DATA_DOCUMENTS, MODELS_DIR
 
 # 0. Constants & environment setup
 MODEL_NAME = "google/flan-t5-xl"
@@ -38,7 +38,7 @@ lora_config = LoraConfig(
 model = get_peft_model(base_model, lora_config)
 
 # 2. Load & preprocess dataset
-raw_ds = load_dataset("csv", data_files=DATA_TRAIN_PROC)
+raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 
 
 def preprocess_fn(example):
