@@ -23,6 +23,7 @@ mkdir -p "$TMPDIR"/bachelor-thesis
 
 cp -r $HOME/bachelor-thesis/code "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/data "$TMPDIR"/bachelor-thesis
+cp -r $HOME/bachelor-thesis/logs "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/models "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/scripts "$TMPDIR"/bachelor-thesis
 
