@@ -2,7 +2,6 @@
 #SBATCH --job-name=train_finqa_indexer
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=18
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --time=00:10:00
