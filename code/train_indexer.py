@@ -26,7 +26,6 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_
 base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    device_map="auto",  # automatically map across GPUs
     torch_dtype=torch.bfloat16  # leverage bf16 on A100
 )
 

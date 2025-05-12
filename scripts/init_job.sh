@@ -13,4 +13,9 @@ source "$TMPDIR"/venv_glen/bin/activate
 
 # Copy data and code from home to compute
 # Better I/O and preserve file structure
-cp -r $HOME/bachelor-thesis "$TMPDIR"
+# Ignore unused files
+rsync -a \
+    --exclude "old" \
+    --exclude "FinQA-main" \
+    --exclude "GLEN-main" \
+    $HOME/bachelor-thesis "$TMPDIR"
