@@ -10,10 +10,8 @@ module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
 
 echo "Modules loaded at: $(date '+%Y-%m-%d %H:%M:%S')"
 
-# Copy virtualenv from home to compute and activate
-# Prevents reading packages on home during runtime
-cp -r $HOME/venv_glen "$TMPDIR"/venv_glen
-source "$TMPDIR"/venv_glen/bin/activate
+# Activate virtualenv
+source $HOME/venv_glen/bin/activate
 
 echo "Environment loaded at: $(date '+%Y-%m-%d %H:%M:%S')"
 

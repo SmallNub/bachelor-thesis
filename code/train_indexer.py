@@ -17,7 +17,7 @@ from config import DATA_DOCUMENTS, MODELS_DIR
 MODEL_NAME = "google/flan-t5-xl"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 
-with open("./ds_config.json", "r", encoding="utf-8") as f:
+with open("code/ds_config.json", "r", encoding="utf-8") as f:
     ds_config = json.load(f)
 
 # Detect number of GPUs
