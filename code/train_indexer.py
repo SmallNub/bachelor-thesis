@@ -77,13 +77,10 @@ tokenized_ds.set_format(type="torch")
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
 # 3. Training arguments
-train_batch_size = 4
-gradient_accumulation_steps = 4
-
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=train_batch_size,
-    gradient_accumulation_steps=gradient_accumulation_steps,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
     optim="adamw_torch",
     learning_rate=1e-5,
     num_train_epochs=5,
@@ -96,6 +93,7 @@ training_args = Seq2SeqTrainingArguments(
     save_total_limit=2,
     load_best_model_at_end=False,
     predict_with_generate=False,
+    label_names=["labels"],
 )
 
 # 4. Initialize Trainer and launch training
@@ -103,7 +101,7 @@ trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_ds,
-    tokenizer=tokenizer,
+    processing_class=tokenizer,
     data_collator=data_collator,
 )
 
