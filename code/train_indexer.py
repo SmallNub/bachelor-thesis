@@ -1,4 +1,5 @@
 import os
+import json
 import torch
 from datasets import load_dataset
 from transformers import (
@@ -15,7 +16,9 @@ from config import DATA_DOCUMENTS, MODELS_DIR
 # 0. Constants & environment setup
 MODEL_NAME = "google/flan-t5-xl"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
-DS_CONFIG = "./ds_config.json"
+
+with open("./ds_config.json", "r", encoding="utf-8") as f:
+    ds_config = json.load(f)
 
 # Detect number of GPUs
 world_size = torch.cuda.device_count()
@@ -85,7 +88,7 @@ training_args = Seq2SeqTrainingArguments(
     learning_rate=1e-5,
     num_train_epochs=5,
     bf16=True,
-    deepspeed=DS_CONFIG,
+    deepspeed=ds_config,
     logging_strategy="steps",
     logging_steps=50,
     save_strategy="epoch",

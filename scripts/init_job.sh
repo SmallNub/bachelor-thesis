@@ -14,8 +14,16 @@ source "$TMPDIR"/venv_glen/bin/activate
 # Copy data and code from home to compute
 # Better I/O and preserve file structure
 # Ignore unused files
-rsync -a \
-    --exclude "old" \
-    --exclude "FinQA-main" \
-    --exclude "GLEN-main" \
-    $HOME/bachelor-thesis "$TMPDIR"
+
+# 1. Make sure dest exists
+mkdir -p "$TMPDIR"/bachelor-thesis
+
+# 2. From your home dir, find all files/dirs except the ones to skip,
+#    and copy them into $TMPDIR/bachelor-thesis, recreating their paths.
+cd "$HOME"
+find bachelor-thesis \
+     \( -path 'bachelor-thesis/old' \
+     -o -path 'bachelor-thesis/FinQA-main' \
+     -o -path 'bachelor-thesis/GLEN-main' \) -prune \
+     -o -print0 \
+| xargs -0 -I{} cp --parents -R {} "$TMPDIR"/bachelor-thesis
