@@ -26,14 +26,16 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_
 base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    torch_dtype=torch.bfloat16  # leverage bf16 on A100
+    torch_dtype=torch.bfloat16,  # leverage bf16 on A100
+    local_files_only=True,
+    low_cpu_mem_usage=True
 )
 
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.05,
+    lora_dropout=0.05
 )
 model = get_peft_model(base_model, lora_config)
 
