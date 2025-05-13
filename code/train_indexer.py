@@ -22,7 +22,7 @@ with open("code/ds_config.json", "r", encoding="utf-8") as f:
     ds_config = json.load(f)
 
 # Detect number of CPUs and GPUs
-num_cpus = int(os.getenv("SLURM_CPUS_PER_TASK", multiprocessing.cpu_count()))
+num_cpus = int(os.getenv("SLURM_JOB_CPUS_PER_NODE", multiprocessing.cpu_count()))
 print(f"Using {num_cpus} CPU core(s)")
 
 num_gpus = torch.cuda.device_count()
@@ -91,8 +91,8 @@ data_collator = FastSeq2SeqCollator(tokenizer, model=model)
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size="auto",
-    gradient_accumulation_steps="auto",
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
     optim="adamw_torch",
     learning_rate=1e-5,
     num_train_epochs=5,
@@ -106,6 +106,7 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=False,
     predict_with_generate=False,
     label_names=["labels"],
+    gradient_checkpointing=True,
 )
 
 # 4. Initialize Trainer and launch training
