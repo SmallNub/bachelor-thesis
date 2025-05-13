@@ -33,7 +33,7 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_
 base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    torch_dtype=torch.bfloat16,  # leverage bf16 on A100
+    torch_dtype=torch.float16,
     local_files_only=True,
     low_cpu_mem_usage=True
 )
@@ -53,16 +53,18 @@ raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 def preprocess_fn(example):
     inputs = tokenizer(
         example["full_text"],
-        return_tensors="pt",
+        truncation=True,
+        max_length=4096,
     )
     targets = tokenizer(
         example["id"],
-        return_tensors="pt",
+        truncation=True,
+        max_length=32,
     )
     return {
-        "input_ids": inputs.input_ids.squeeze(0),
-        "attention_mask": inputs.attention_mask.squeeze(0),
-        "labels": targets.input_ids.squeeze(0),
+        "input_ids": inputs.input_ids,
+        "attention_mask": inputs.attention_mask,
+        "labels": targets.input_ids,
     }
 
 
@@ -74,17 +76,27 @@ tokenized_ds = raw_ds.map(
 )
 tokenized_ds.set_format(type="torch")
 
-data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
+
+class FastSeq2SeqCollator(DataCollatorForSeq2Seq):
+    def torch_call(self, features):
+        # first call parent to tokenize padding
+        batch = super().torch_call(features)
+        # then replace slow list→tensor with a stack
+        batch["labels"] = torch.stack([f["labels"] for f in features], dim=0)
+        return batch
+
+
+data_collator = FastSeq2SeqCollator(tokenizer, model=model)
 
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=8,
+    per_device_train_batch_size="auto",
+    gradient_accumulation_steps="auto",
     optim="adamw_torch",
     learning_rate=1e-5,
     num_train_epochs=5,
-    bf16=True,
+    fp16=True,
     deepspeed=ds_config,
     logging_strategy="steps",
     logging_steps=50,
