@@ -40,6 +40,9 @@ base_model = AutoModelForSeq2SeqLM.from_pretrained(
     low_cpu_mem_usage=True
 )
 
+base_model.config.use_cache = False
+base_model.enable_input_require_grads()
+
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
