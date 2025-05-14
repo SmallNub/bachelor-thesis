@@ -36,7 +36,7 @@ base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype=torch.float16,
-    local_files_only=True,
+    local_files_only=False,  # Change for first time downloads
     low_cpu_mem_usage=True
 )
 
