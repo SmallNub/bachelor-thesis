@@ -107,6 +107,7 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=False,
     predict_with_generate=False,
     label_names=["labels"],
+    gradient_checkpointing=True
 )
 
 # 4. Initialize Trainer and launch training
