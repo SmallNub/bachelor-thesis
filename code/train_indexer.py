@@ -17,7 +17,7 @@ import bitsandbytes as bnb
 from config import DATA_DOCUMENTS, MODELS_DIR
 
 # 0. Constants & environment setup
-MODEL_NAME = "google/flan-t5-xl"
+MODEL_NAME = "google/flan-t5-base"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
@@ -96,11 +96,11 @@ data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=16,
     learning_rate=5e-5,
     num_train_epochs=5,
-    fp16=True,
+    bf16=True,
     deepspeed=ds_config,
     logging_strategy="steps",
     logging_steps=50,

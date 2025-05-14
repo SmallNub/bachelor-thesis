@@ -19,7 +19,7 @@
         "contiguous_gradients": true,
         "round_robin_gradients": true
     },
-    "fp16": {
+    "bf16": {
         "enabled": true
     }
 }
