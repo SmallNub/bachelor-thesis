@@ -17,7 +17,7 @@ import bitsandbytes as bnb
 from config import DATA_DOCUMENTS, MODELS_DIR
 
 # 0. Constants & environment setup
-MODEL_NAME = "google/flan-t5-base"
+MODEL_NAME = "google/flan-t5-xl"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
