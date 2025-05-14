@@ -11,11 +11,13 @@ from transformers import (
     DataCollatorForSeq2Seq,
 )
 from peft import LoraConfig, get_peft_model, TaskType
+from peft.optimizers import create_loraplus_optimizer
+import bitsandbytes as bnb
 
 from config import DATA_DOCUMENTS, MODELS_DIR
 
 # 0. Constants & environment setup
-MODEL_NAME = "google/flan-t5-xl"
+MODEL_NAME = "google/flan-t5-base"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
@@ -40,11 +42,22 @@ base_model = AutoModelForSeq2SeqLM.from_pretrained(
 
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.05
+    lora_dropout=0.05,
+    target_modules="all-linear"
 )
 model = get_peft_model(base_model, lora_config)
+model.print_trainable_parameters()
+
+optimizer = create_loraplus_optimizer(
+    model=model,
+    optimizer_cls=bnb.optim.Adam8bit,
+    lr=5e-5,
+    loraplus_lr_ratio=16,
+)
+scheduler = None
 
 # 2. Load & preprocess dataset
 raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
@@ -74,27 +87,15 @@ tokenized_ds = raw_ds.map(
     remove_columns=raw_ds.column_names,
     num_proc=num_cpus,
 )
-tokenized_ds.set_format(type="torch")
 
-
-class FastSeq2SeqCollator(DataCollatorForSeq2Seq):
-    def torch_call(self, features):
-        # first call parent to tokenize padding
-        batch = super().torch_call(features)
-        # then replace slow list→tensor with a stack
-        batch["labels"] = torch.stack([f["labels"] for f in features], dim=0)
-        return batch
-
-
-data_collator = FastSeq2SeqCollator(tokenizer, model=model)
+data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=2,
     gradient_accumulation_steps=4,
-    optim="adamw_torch",
-    learning_rate=1e-5,
+    learning_rate=5e-5,
     num_train_epochs=5,
     fp16=True,
     deepspeed=ds_config,
@@ -106,7 +107,6 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=False,
     predict_with_generate=False,
     label_names=["labels"],
-    gradient_checkpointing=True,
 )
 
 # 4. Initialize Trainer and launch training
@@ -116,6 +116,7 @@ trainer = Seq2SeqTrainer(
     train_dataset=tokenized_ds,
     processing_class=tokenizer,
     data_collator=data_collator,
+    optimizers=(optimizer, scheduler),
 )
 
 if __name__ == "__main__":
