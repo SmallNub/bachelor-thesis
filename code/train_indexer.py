@@ -6,13 +6,16 @@ from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForSeq2SeqLM,
+    DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
-    DataCollatorForSeq2Seq,
+    EarlyStoppingCallback,
+    BitsAndBytesConfig
 )
-from peft import LoraConfig, get_peft_model, TaskType
+from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
+import evaluate
 
 from config import DATA_DOCUMENTS, MODELS_DIR
 
@@ -30,18 +33,28 @@ print(f"Using {num_cpus} CPU core(s)")
 num_gpus = torch.cuda.device_count()
 print(f"Using {num_gpus} CUDA device(s)")
 
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_compute_dtype=torch.bfloat16,
+)
+
 # 1. Load tokenizer & model + PEFT LoRA
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_fast=True)
 base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    torch_dtype=torch.bfloat16,
+    torch_dtype="auto",
     local_files_only=False,  # Change for first time downloads
-    low_cpu_mem_usage=True
+    low_cpu_mem_usage=True,
+    quantization_config=bnb_config
 )
 
 base_model.config.use_cache = False
 base_model.enable_input_require_grads()
+
+base_model = prepare_model_for_kbit_training(base_model)
 
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
@@ -53,6 +66,7 @@ lora_config = LoraConfig(
 )
 model = get_peft_model(base_model, lora_config)
 model.print_trainable_parameters()
+print(f"Memory footprint: {model.get_memory_footprint():,}")
 
 optimizer = create_loraplus_optimizer(
     model=model,
@@ -93,24 +107,42 @@ tokenized_ds = raw_ds.map(
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
+exact_match = evaluate.load("exact_match")
+
+
+def compute_metrics(eval_preds):
+    preds, labels = eval_preds
+    # decode predictions and labels into strings
+    decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+    decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+    # EM accuracy
+    em = exact_match.compute(predictions=decoded_preds, references=decoded_labels)["exact_match"]
+    return {"exact_match": em}
+
+
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=4,
-    gradient_accumulation_steps=16,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=8,
+    eval_accumulation_steps=8,
     learning_rate=5e-5,
-    num_train_epochs=5,
+    num_train_epochs=20,
     bf16=True,
     deepspeed=ds_config,
     logging_strategy="steps",
     logging_steps=50,
     save_strategy="epoch",
-    eval_strategy="no",
-    save_total_limit=2,
-    load_best_model_at_end=False,
-    predict_with_generate=False,
+    eval_strategy="epoch",
+    eval_on_start=True,
+    save_total_limit=5,
+    load_best_model_at_end=True,
+    metric_for_best_model="exact_match",
+    greater_is_better=True,
+    predict_with_generate=True,
     label_names=["labels"],
-    gradient_checkpointing=True
+    gradient_checkpointing=True,
 )
 
 # 4. Initialize Trainer and launch training
@@ -118,9 +150,12 @@ trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_ds,
+    eval_dataset=tokenized_ds,
     processing_class=tokenizer,
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
+    compute_metrics=compute_metrics,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
 )
 
 if __name__ == "__main__":
