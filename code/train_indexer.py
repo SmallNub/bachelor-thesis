@@ -123,10 +123,10 @@ def compute_metrics(eval_preds):
 # 3. Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
-    gradient_accumulation_steps=8,
-    eval_accumulation_steps=8,
+    per_device_train_batch_size=32,
+    per_device_eval_batch_size=32,
+    gradient_accumulation_steps=1,
+    eval_accumulation_steps=1,
     learning_rate=5e-5,
     num_train_epochs=20,
     bf16=True,
@@ -142,7 +142,7 @@ training_args = Seq2SeqTrainingArguments(
     greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,  # Large memory impact
 )
 
 # 4. Initialize Trainer and launch training
