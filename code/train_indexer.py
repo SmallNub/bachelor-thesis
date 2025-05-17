@@ -10,16 +10,24 @@ from transformers import (
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
     EarlyStoppingCallback,
-    BitsAndBytesConfig
+    BitsAndBytesConfig,
 )
-from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
+from peft import (
+    LoraConfig,
+    EvaConfig,
+    TaskType,
+    get_peft_model,
+    initialize_lora_eva_weights,
+    prepare_model_for_kbit_training,
+)
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
-import evaluate
 
 from config import DATA_DOCUMENTS, MODELS_DIR
 
-# 0. Constants & environment setup
+
+# ENVIRONMENT SETUP
+
 MODEL_NAME = "google/flan-t5-base"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
 
@@ -33,61 +41,19 @@ print(f"Using {num_cpus} CPU core(s)")
 num_gpus = torch.cuda.device_count()
 print(f"Using {num_gpus} CUDA device(s)")
 
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
-)
 
-# 1. Load tokenizer & model + PEFT LoRA
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=MODELS_DIR, use_fast=True)
-base_model = AutoModelForSeq2SeqLM.from_pretrained(
-    MODEL_NAME,
-    cache_dir=MODELS_DIR,
-    torch_dtype="auto",
-    local_files_only=False,  # Change for first time downloads
-    low_cpu_mem_usage=True,
-    quantization_config=bnb_config
-)
-
-base_model.config.use_cache = False
-base_model.enable_input_require_grads()
-
-base_model = prepare_model_for_kbit_training(base_model)
-
-lora_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules="all-linear"
-)
-model = get_peft_model(base_model, lora_config)
-model.print_trainable_parameters()
-print(f"Memory footprint: {model.get_memory_footprint():,}")
-
-optimizer = create_loraplus_optimizer(
-    model=model,
-    optimizer_cls=bnb.optim.Adam8bit,
-    lr=5e-5,
-    loraplus_lr_ratio=16,
-)
-scheduler = None
-
-# 2. Load & preprocess dataset
-raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
-
+# DATA PREPROCESSING
 
 def preprocess_fn(example):
+    prompt = f"Retrieve the document id for this document:\n{example['document']}"
+
     inputs = tokenizer(
-        example["full_text"],
+        prompt,
         truncation=True,
         max_length=4096,
     )
     targets = tokenizer(
-        example["id"],
+        example["document_id"],
         truncation=True,
         max_length=32,
     )
@@ -98,29 +64,97 @@ def preprocess_fn(example):
     }
 
 
-# Map & set format for PyTorch
+# Process data
+raw_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 tokenized_ds = raw_ds.map(
     preprocess_fn,
     remove_columns=raw_ds.column_names,
     num_proc=num_cpus,
 )
 
-data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
-exact_match = evaluate.load("exact_match")
+# MODEL SETUP
+
+# Quantization config
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_compute_dtype=torch.bfloat16,
+)
+
+# Load tokenizer and model
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_NAME,
+    cache_dir=MODELS_DIR,
+    use_fast=True
+)
+base_model = AutoModelForSeq2SeqLM.from_pretrained(
+    MODEL_NAME,
+    cache_dir=MODELS_DIR,
+    torch_dtype="auto",
+    local_files_only=False,  # Change for first time downloads
+    low_cpu_mem_usage=True,
+    quantization_config=bnb_config,
+)
+
+# Fix for gradient checkpoints
+base_model.config.use_cache = False
+base_model.enable_input_require_grads()
+
+base_model = prepare_model_for_kbit_training(base_model)
+
+# LoRA config (QLoRA + EVA)
+lora_config = LoraConfig(
+    init_lora_weights="eva",
+    eva_config=EvaConfig(rho=2.0),
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules="all-linear",
+)
+model = get_peft_model(base_model, lora_config, low_cpu_mem_usage=True)
+initialize_lora_eva_weights(model, tokenized_ds)
+
+# Print model statistics
+model.print_trainable_parameters()
+print(f"Memory footprint: {model.get_memory_footprint():,}")
+
+# Specialized LoRA optimizer
+optimizer = create_loraplus_optimizer(
+    model=model,
+    optimizer_cls=bnb.optim.Adam8bit,
+    lr=5e-5,
+    loraplus_lr_ratio=16,
+)
+scheduler = None
+
+data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
 
 def compute_metrics(eval_preds):
+    """Compute substring match accuracy."""
     preds, labels = eval_preds
-    # decode predictions and labels into strings
+
+    # Replace pytorch pad token id with tokenizer token id
+    labels = torch.where(labels != -100, labels, tokenizer.pad_token_id)
+
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-    # EM accuracy
-    em = exact_match.compute(predictions=decoded_preds, references=decoded_labels)["exact_match"]
-    return {"exact_match": em}
+
+    # Compute substring match accuracy
+    matches = [
+        int(label.lower().strip() in pred.lower().strip())
+        for pred, label in zip(decoded_preds, decoded_labels)
+    ]
+    accuracy = sum(matches) / len(matches)
+
+    return {"substring_match_accuracy": accuracy}
 
 
-# 3. Training arguments
+# Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=32,
@@ -138,14 +172,17 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=5,
     load_best_model_at_end=True,
-    metric_for_best_model="exact_match",
+    metric_for_best_model="substring_match_accuracy",
     greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
     gradient_checkpointing=False,  # Large memory impact
+    dataloader_num_workers=num_cpus,
+    dataloader_pin_memory=True,
+    dataloader_persistent_workers=True,
 )
 
-# 4. Initialize Trainer and launch training
+# Trainer
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,

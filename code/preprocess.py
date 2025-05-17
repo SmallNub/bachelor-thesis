@@ -8,8 +8,18 @@ from config import (
     DATA_TEST_RAW,
     DATA_TEST_PROC,
     DATA_DOCUMENTS,
-    USED_COLUMNS,
 )
+
+USED_COLUMNS = [
+    "document",
+    "document_id",
+    "question",
+    "answer",
+    "exe_ans",
+    "steps",
+    "program",
+    "program_re",
+]
 
 
 def convert_table(table: list[list[str]]):
@@ -32,14 +42,14 @@ def reformat_data(input_file_path: str, output_file_path: str):
     raw_df.loc[:, "post_text"] = raw_df["post_text"].map(" ".join)
     raw_df.loc[:, "table"] = raw_df["table"].map(convert_table)
 
-    raw_df.loc[:, "full_text"] = (
-        raw_df["pre_text"]
+    raw_df.loc[:, "document"] = (
+        (raw_df["pre_text"] + " ")
         + raw_df["post_text"]
-        + "\nThis is a table:\n"
-        + raw_df["table"]
+        + ("\nThis is a table:\n" + raw_df["table"])
     )
 
     # Drop the unused columns
+    raw_df.rename(columns={"filename": "document_id"}, inplace=True)
     df = raw_df[USED_COLUMNS]
 
     df.to_csv(output_file_path, index=False)
@@ -53,7 +63,7 @@ def create_documents_data(
     output_file_path: str,
 ):
     """Create document and docid data."""
-    document_columns = ["full_text", "id"]
+    document_columns = ["document", "document_id"]
     documents_df = pd.concat(
         [
             train_df[document_columns],
@@ -62,6 +72,7 @@ def create_documents_data(
         ],
         axis="index",
     )
+    documents_df.drop_duplicates(inplace=True)
 
     documents_df.to_csv(output_file_path, index=False)
     return documents_df

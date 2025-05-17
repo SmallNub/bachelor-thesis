@@ -15,8 +15,6 @@ DATA_TEST_PROC = DATA_DIR_PROC + "/test.csv"
 
 DATA_DOCUMENTS = DATA_DIR_PROC + "/documents.csv"
 
-USED_COLUMNS = ["full_text", "table", "id", "question", "answer", "exe_ans", "steps", "program", "program_re"]
-
 # MODEL PATHS
 
 MODELS_DIR = "models"

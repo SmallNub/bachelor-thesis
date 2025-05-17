@@ -15,7 +15,7 @@ source $HOME/bachelor-thesis/scripts/init_job.sh
 cd "$TMPDIR"/bachelor-thesis
 
 function copy_to_home() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Copying results to home directory."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Copying results to home directory"
     cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
     cp -rp "$TMPDIR"/bachelor-thesis/logs $HOME/bachelor-thesis/
 }
