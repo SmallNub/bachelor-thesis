@@ -1,7 +1,9 @@
 import os
+import gc
 import json
 import multiprocessing
 import torch
+from torch.utils.data import DataLoader
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -22,11 +24,12 @@ from peft import (
 )
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
-
 from config import DATA_DOCUMENTS, MODELS_DIR
 
 
 # ENVIRONMENT SETUP
+
+BATCH_SIZE = 32
 
 MODEL_NAME = "google/flan-t5-base"
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
@@ -43,6 +46,14 @@ print(f"Using {num_gpus} CUDA device(s)")
 
 
 # DATA PREPROCESSING
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_NAME,
+    cache_dir=MODELS_DIR,
+    use_fast=True
+)
+
 
 def preprocess_fn(example):
     prompt = f"Retrieve the document id for this document:\n{example['document']}"
@@ -83,12 +94,6 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-# Load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME,
-    cache_dir=MODELS_DIR,
-    use_fast=True
-)
 base_model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
@@ -116,7 +121,6 @@ lora_config = LoraConfig(
     target_modules="all-linear",
 )
 model = get_peft_model(base_model, lora_config, low_cpu_mem_usage=True)
-initialize_lora_eva_weights(model, tokenized_ds)
 
 # Print model statistics
 model.print_trainable_parameters()
@@ -132,6 +136,31 @@ optimizer = create_loraplus_optimizer(
 scheduler = None
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
+
+
+def collate_fn(examples):
+    collated = data_collator(examples, return_tensors="pt")
+
+    # Recreate the dictionary required
+    return {k: collated[k] for k in examples[0].keys()}
+
+
+# Dataloader for EVA
+dataloader = DataLoader(
+    tokenized_ds,
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    collate_fn=collate_fn,
+    num_workers=num_cpus,
+    prefetch_factor=2,
+    pin_memory=True,
+    persistent_workers=True
+)
+
+# A full forward pass over the data
+initialize_lora_eva_weights(model, dataloader)
+del dataloader
+gc.collect()
 
 
 def compute_metrics(eval_preds):
@@ -157,8 +186,8 @@ def compute_metrics(eval_preds):
 # Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
-    per_device_train_batch_size=32,
-    per_device_eval_batch_size=32,
+    per_device_train_batch_size=BATCH_SIZE,
+    per_device_eval_batch_size=BATCH_SIZE,
     gradient_accumulation_steps=1,
     eval_accumulation_steps=1,
     learning_rate=5e-5,
@@ -178,6 +207,7 @@ training_args = Seq2SeqTrainingArguments(
     label_names=["labels"],
     gradient_checkpointing=False,  # Large memory impact
     dataloader_num_workers=num_cpus,
+    dataloader_prefetch_factor=2,
     dataloader_pin_memory=True,
     dataloader_persistent_workers=True,
 )
