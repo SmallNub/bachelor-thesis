@@ -2,6 +2,7 @@ import os
 import json
 import multiprocessing
 import torch
+import numpy as np
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -141,7 +142,7 @@ def compute_metrics(eval_preds):
     preds, labels = eval_preds
 
     # Replace pytorch pad token id with tokenizer token id
-    labels = torch.where(labels != -100, labels, tokenizer.pad_token_id)
+    labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
 
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
