@@ -1,6 +1,8 @@
 import os
+import sys
 import json
 import multiprocessing
+import logging
 import torch
 import numpy as np
 from datasets import load_dataset
@@ -26,23 +28,32 @@ from config import DATA_DOCUMENTS, MODELS_DIR
 
 # ENVIRONMENT SETUP
 
+# Set logging
+logging.basicConfig(
+    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
+
+
 BATCH_SIZE = 32
 
 MODEL_NAME = "google/flan-t5-base"
-print(f"Using model: {MODEL_NAME}")
+logger.info(f"Using model: {MODEL_NAME}")
 
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
-print(f"Output location: {OUTPUT_DIR}")
+logger.info(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
     ds_config = json.load(f)
 
 # Detect number of CPUs and GPUs
 num_cpus = int(os.getenv("SLURM_JOB_CPUS_PER_NODE", multiprocessing.cpu_count()))
-print(f"Using {num_cpus} CPU core(s)")
+logger.info(f"Using {num_cpus} CPU core(s)")
 
 num_gpus = torch.cuda.device_count()
-print(f"Using {num_gpus} CUDA device(s)")
+logger.info(f"Using {num_gpus} CUDA device(s)")
 
 
 # DATA PREPROCESSING
@@ -122,8 +133,16 @@ lora_config = LoraConfig(
 model = get_peft_model(model, lora_config)
 
 # Print model statistics
-model.print_trainable_parameters()
-print(f"Memory footprint: {model.get_memory_footprint():,}")
+# Code from model.print_trainable_parameters()
+trainable_params, all_param = model.get_nb_trainable_parameters()
+
+logger.info(
+    f"trainable params: {trainable_params:,d} || "
+    f"all params: {all_param:,d} || "
+    f"trainable%: {100 * trainable_params / all_param:.4f}"
+)
+
+logger.info(f"Memory footprint: {model.get_memory_footprint():,}")
 
 # Specialized LoRA optimizer
 optimizer = create_loraplus_optimizer(
@@ -173,13 +192,14 @@ training_args = Seq2SeqTrainingArguments(
     save_strategy="epoch",
     eval_strategy="epoch",
     eval_on_start=True,
-    save_total_limit=5,
+    save_total_limit=2,
     load_best_model_at_end=True,
     metric_for_best_model="substring_match_accuracy",
     greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
-    gradient_checkpointing=False,  # Large memory impact
+    gradient_checkpointing=True,  # Large memory impact
+    gradient_checkpointing_kwargs={"use_reentrant": False},
     dataloader_num_workers=num_cpus,
     dataloader_prefetch_factor=2,
     dataloader_pin_memory=True,

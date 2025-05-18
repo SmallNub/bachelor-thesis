@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
-#SBATCH --time=01:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=slurm/indexing_%j.out
 #SBATCH --error=slurm/indexing_%j.err
 #SBATCH --signal=USR1@300
@@ -15,7 +15,7 @@ source $HOME/bachelor-thesis/scripts/init_job.sh
 cd "$TMPDIR"/bachelor-thesis
 
 function copy_to_home() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Copying results to home directory"
+    log INFO "Copying results to home directory"
     cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
     cp -rp "$TMPDIR"/bachelor-thesis/logs $HOME/bachelor-thesis/
 }
