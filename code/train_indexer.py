@@ -187,6 +187,7 @@ training_args = Seq2SeqTrainingArguments(
     num_train_epochs=50,
     bf16=True,
     deepspeed=ds_config,
+    report_to="tensorboard",
     logging_strategy="epoch",
     save_strategy="epoch",
     eval_strategy="epoch",
