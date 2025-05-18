@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
@@ -67,7 +67,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 
 
 def preprocess_fn(example):
-    prompt = f"Retrieve the document id for this document:\n{example['document']}"
+    prompt = f"Retrieve the document id for this document: {example['document']}"
 
     inputs = tokenizer(
         prompt,
@@ -75,7 +75,7 @@ def preprocess_fn(example):
         max_length=4096,
     )
     targets = tokenizer(
-        example["document_id"],
+        text_target=example["document_id"],
         truncation=True,
         max_length=32,
     )
@@ -181,8 +181,8 @@ training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
-    gradient_accumulation_steps=4,
-    eval_accumulation_steps=4,
+    gradient_accumulation_steps=1,
+    eval_accumulation_steps=1,
     learning_rate=5e-5,
     num_train_epochs=50,
     bf16=True,
