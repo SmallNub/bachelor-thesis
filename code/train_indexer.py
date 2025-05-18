@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
@@ -181,8 +181,8 @@ training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
-    gradient_accumulation_steps=1,
-    eval_accumulation_steps=1,
+    gradient_accumulation_steps=4,
+    eval_accumulation_steps=4,
     learning_rate=5e-5,
     num_train_epochs=50,
     bf16=True,
