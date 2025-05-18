@@ -1,9 +1,7 @@
 import os
-import gc
 import json
 import multiprocessing
 import torch
-from torch.utils.data import DataLoader
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -16,10 +14,8 @@ from transformers import (
 )
 from peft import (
     LoraConfig,
-    EvaConfig,
     TaskType,
     get_peft_model,
-    initialize_lora_eva_weights,
     prepare_model_for_kbit_training,
 )
 from peft.optimizers import create_loraplus_optimizer
@@ -32,7 +28,10 @@ from config import DATA_DOCUMENTS, MODELS_DIR
 BATCH_SIZE = 32
 
 MODEL_NAME = "google/flan-t5-base"
+print(f"Using model: {MODEL_NAME}")
+
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_indexer")
+print(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
     ds_config = json.load(f)
@@ -94,7 +93,7 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
-base_model = AutoModelForSeq2SeqLM.from_pretrained(
+model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype="auto",
@@ -104,15 +103,14 @@ base_model = AutoModelForSeq2SeqLM.from_pretrained(
 )
 
 # Fix for gradient checkpoints
-base_model.config.use_cache = False
-base_model.enable_input_require_grads()
+model.config.use_cache = False
+model.enable_input_require_grads()
 
-base_model = prepare_model_for_kbit_training(base_model)
+model = prepare_model_for_kbit_training(model)
 
-# LoRA config (QLoRA + EVA)
+# LoRA config (QLoRA + OLoRA)
 lora_config = LoraConfig(
-    init_lora_weights="eva",
-    eva_config=EvaConfig(rho=2.0),
+    init_lora_weights="olora",
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
     r=16,
@@ -120,7 +118,7 @@ lora_config = LoraConfig(
     lora_dropout=0.1,
     target_modules="all-linear",
 )
-model = get_peft_model(base_model, lora_config, low_cpu_mem_usage=True)
+model = get_peft_model(model, lora_config)
 
 # Print model statistics
 model.print_trainable_parameters()
@@ -136,31 +134,6 @@ optimizer = create_loraplus_optimizer(
 scheduler = None
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
-
-
-def collate_fn(examples):
-    collated = data_collator(examples, return_tensors="pt")
-
-    # Recreate the dictionary required
-    return {k: collated[k] for k in examples[0].keys()}
-
-
-# Dataloader for EVA
-dataloader = DataLoader(
-    tokenized_ds,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    collate_fn=collate_fn,
-    num_workers=num_cpus,
-    prefetch_factor=2,
-    pin_memory=True,
-    persistent_workers=True
-)
-
-# A full forward pass over the data
-initialize_lora_eva_weights(model, dataloader)
-del dataloader
-gc.collect()
 
 
 def compute_metrics(eval_preds):
