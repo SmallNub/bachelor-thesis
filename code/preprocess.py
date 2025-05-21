@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 
 from config import (
@@ -20,6 +21,16 @@ USED_COLUMNS = [
     "program",
     "program_re",
 ]
+
+pattern = re.compile(r'(.*)/page_(\d+)\.pdf')
+
+
+def convert_filename(path: str):
+    """Convert filename into id (ABC/2010/page_12.pdf) -> (ABC/2010/12)"""
+    match = pattern.search(path)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    return path
 
 
 def convert_table(table: list[list[str]]):
@@ -49,6 +60,7 @@ def reformat_data(input_file_path: str, output_file_path: str):
     )
 
     # Drop the unused columns
+    raw_df["filename"] = raw_df["filename"].apply(convert_filename)
     raw_df.rename(columns={"filename": "document_id"}, inplace=True)
     df = raw_df[USED_COLUMNS]
 

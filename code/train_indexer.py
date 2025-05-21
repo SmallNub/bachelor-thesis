@@ -23,6 +23,7 @@ from peft import (
 )
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
+
 from config import DATA_DOCUMENTS, MODELS_DIR
 
 
@@ -38,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 
 BATCH_SIZE = 16
+ACCUMULATION_STEPS = 2
+LEARNING_RATE = 2e-4
+EPOCHS = 40
 
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
@@ -109,7 +113,7 @@ model = AutoModelForSeq2SeqLM.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype="auto",
-    local_files_only=False,  # Change for first time downloads
+    local_files_only=True,  # Change for first time downloads
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
 )
@@ -127,7 +131,7 @@ lora_config = LoraConfig(
     inference_mode=False,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.1,
+    lora_dropout=0.05,
     target_modules="all-linear",
 )
 model = get_peft_model(model, lora_config)
@@ -148,7 +152,7 @@ logger.info(f"Memory footprint: {model.get_memory_footprint():,}")
 optimizer = create_loraplus_optimizer(
     model=model,
     optimizer_cls=bnb.optim.Adam8bit,
-    lr=5e-5,
+    lr=LEARNING_RATE,
     loraplus_lr_ratio=16,
 )
 scheduler = None
@@ -161,6 +165,7 @@ def compute_metrics(eval_preds):
     preds, labels = eval_preds
 
     # Replace pytorch pad token id with tokenizer token id
+    preds = np.where(preds != -100, preds, tokenizer.pad_token_id)
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
 
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
@@ -181,10 +186,11 @@ training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
-    gradient_accumulation_steps=2,
-    eval_accumulation_steps=1,
-    learning_rate=5e-5,
-    num_train_epochs=40,
+    gradient_accumulation_steps=ACCUMULATION_STEPS,
+    eval_accumulation_steps=ACCUMULATION_STEPS,
+    learning_rate=LEARNING_RATE,
+    num_train_epochs=EPOCHS,
+    optim="adamw_bnb_8bit",
     bf16=True,
     deepspeed=ds_config,
     report_to="tensorboard",
@@ -194,8 +200,8 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=2,
     load_best_model_at_end=True,
-    metric_for_best_model="substring_match_accuracy",
-    greater_is_better=True,
+    metric_for_best_model="eval_loss",
+    greater_is_better=False,
     predict_with_generate=True,
     label_names=["labels"],
     gradient_checkpointing=True,  # Large memory impact
@@ -216,7 +222,7 @@ trainer = Seq2SeqTrainer(
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
     compute_metrics=compute_metrics,
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
 )
 
 if __name__ == "__main__":
