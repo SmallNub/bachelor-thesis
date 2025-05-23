@@ -1,9 +1,11 @@
 import os
 import sys
-import json
-import multiprocessing
+import signal
 import logging
+import multiprocessing
+import json
 import torch
+import torch.distributed as dist
 import numpy as np
 from datasets import load_dataset
 from transformers import (
@@ -37,6 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+logger.info("Script started...")
 
 BATCH_SIZE = 16
 ACCUMULATION_STEPS = 2
@@ -200,16 +203,17 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=2,
     load_best_model_at_end=True,
-    metric_for_best_model="eval_loss",
+    metric_for_best_model="eval_substring_match_accuracy",
     greater_is_better=False,
     predict_with_generate=True,
     label_names=["labels"],
     gradient_checkpointing=True,  # Large memory impact
     gradient_checkpointing_kwargs={"use_reentrant": False},
+    dataloader_drop_last=True,
     dataloader_num_workers=num_cpus,
     dataloader_prefetch_factor=2,
     dataloader_pin_memory=True,
-    dataloader_persistent_workers=True,
+    dataloader_persistent_workers=False,  # Causes hanging at the end
 )
 
 # Trainer
@@ -226,6 +230,22 @@ trainer = Seq2SeqTrainer(
 )
 
 if __name__ == "__main__":
-    trainer.train()
-    model.save_pretrained(OUTPUT_DIR)
-    tokenizer.save_pretrained(OUTPUT_DIR)
+    try:
+        trainer.train()
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+    finally:
+        try:
+            model.save_pretrained(OUTPUT_DIR)
+            tokenizer.save_pretrained(OUTPUT_DIR)
+            logger.info("Saved succesfully")
+        except Exception as e:
+            logger.error(f"Saving failed: {e}")
+
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+    logger.info("Script finished")
+
+    # Send SIGTERM to the current process
+    os.kill(os.getpid(), signal.SIGTERM)

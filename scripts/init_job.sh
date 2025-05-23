@@ -1,5 +1,9 @@
 #!/bin/bash
 
+start_time=$(date +%s)
+
+# Function: log [INFO|WARNING|ERROR] <message>
+# Logs to stdout with format [Time] [Level] [File] Message
 function log() {
     local level="$1"
     shift
@@ -21,6 +25,8 @@ function log() {
 log INFO "Script started"
 
 # Load modules
+log INFO "Loading modules..."
+
 module purge
 module load 2023
 module load Python/3.11.3-GCCcore-12.3.0
@@ -29,6 +35,8 @@ module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
 log INFO "Modules loaded"
 
 # Activate virtualenv
+log INFO "Loading environment..."
+
 source $HOME/venv_glen/bin/activate
 
 log INFO "Environment loaded"
@@ -36,6 +44,7 @@ log INFO "Environment loaded"
 # Copy data and code from home to compute
 # Better I/O and preserve file structure
 # Ignore unused files
+log INFO "Copying files..."
 
 mkdir -p "$TMPDIR"/bachelor-thesis
 
@@ -45,4 +54,18 @@ cp -r $HOME/bachelor-thesis/logs "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/models "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/scripts "$TMPDIR"/bachelor-thesis
 
-log INFO "Initialization completed"
+log INFO "Files copied"
+
+# Load utilities
+source $HOME/bachelor-thesis/scripts/signal_utils.sh
+
+# Change working directory
+cd "$TMPDIR"/bachelor-thesis
+
+end_time=$(date +%s)
+elapsed=$((end_time - start_time))
+
+printf -v duration "%02d:%02d:%02d" \
+    $((elapsed/3600)) $(( (elapsed%3600)/60 )) $((elapsed%60))
+
+log INFO "Initialization completed in $duration"
