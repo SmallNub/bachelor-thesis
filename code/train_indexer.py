@@ -4,9 +4,10 @@ import signal
 import logging
 import multiprocessing
 import json
+import numpy as np
 import torch
 import torch.distributed as dist
-import numpy as np
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -158,7 +159,16 @@ optimizer = create_loraplus_optimizer(
     lr=LEARNING_RATE,
     loraplus_lr_ratio=16,
 )
-scheduler = None
+scheduler = ReduceLROnPlateau(
+    optimizer=optimizer,
+    mode="min",
+    factor=0.5,
+    patience=3,
+    threshold=1e-3,
+    threshold_mode="rel",
+    cooldown=1,
+    min_lr=1e-6,
+)
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
@@ -194,6 +204,7 @@ training_args = Seq2SeqTrainingArguments(
     learning_rate=LEARNING_RATE,
     num_train_epochs=EPOCHS,
     optim="adamw_bnb_8bit",
+    lr_scheduler_type="reduce_lr_on_plateau",
     bf16=True,
     deepspeed=ds_config,
     report_to="tensorboard",
