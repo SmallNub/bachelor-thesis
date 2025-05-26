@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=train_finqa_indexer
+#SBATCH --job-name=train_finqa_full
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
-#SBATCH --time=08:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=slurm/indexing_%j.out
 #SBATCH --error=slurm/indexing_%j.err
 #SBATCH --signal=USR1@300
@@ -32,7 +32,7 @@ export NCCL_SOCKET_IFNAME="eno2np0"
 log INFO "Starting main process in the background"
 start_time=$(date +%s)
 
-deepspeed --num_gpus=$SLURM_GPUS_ON_NODE code/train_indexer.py --deepspeed ds_config.json &
+deepspeed --num_gpus=$SLURM_GPUS_ON_NODE code/train_full.py &
 pid=$!
 
 log INFO "Main process started with pid $pid"

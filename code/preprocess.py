@@ -4,8 +4,8 @@ import pandas as pd
 from config import (
     DATA_TRAIN_RAW,
     DATA_TRAIN_PROC,
-    DATA_VALID_RAW,
-    DATA_VALID_PROC,
+    DATA_EVAL_RAW,
+    DATA_EVAL_PROC,
     DATA_TEST_RAW,
     DATA_TEST_PROC,
     DATA_DOCUMENTS,
@@ -70,7 +70,7 @@ def reformat_data(input_file_path: str, output_file_path: str):
 
 def create_documents_data(
     train_df: pd.DataFrame,
-    valid_df: pd.DataFrame,
+    eval_df: pd.DataFrame,
     test_df: pd.DataFrame,
     output_file_path: str,
 ):
@@ -79,7 +79,7 @@ def create_documents_data(
     documents_df = pd.concat(
         [
             train_df[document_columns],
-            valid_df[document_columns],
+            eval_df[document_columns],
             test_df[document_columns],
         ],
         axis="index",
@@ -92,7 +92,7 @@ def create_documents_data(
 
 if __name__ == "__main__":
     train_df = reformat_data(DATA_TRAIN_RAW, DATA_TRAIN_PROC)
-    valid_df = reformat_data(DATA_VALID_RAW, DATA_VALID_PROC)
+    eval_df = reformat_data(DATA_EVAL_RAW, DATA_EVAL_PROC)
     test_df = reformat_data(DATA_TEST_RAW, DATA_TEST_PROC)
 
-    documents_df = create_documents_data(train_df, valid_df, test_df, DATA_DOCUMENTS)
+    documents_df = create_documents_data(train_df, eval_df, test_df, DATA_DOCUMENTS)

@@ -3,6 +3,7 @@ import sys
 import logging
 import multiprocessing
 import json
+import re
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -29,7 +30,7 @@ import bitsandbytes as bnb
 from config import (
     DATA_DOCUMENTS,
     DATA_TRAIN_PROC,
-    DATA_VALID_PROC,
+    DATA_EVAL_PROC,
     DATA_TEST_PROC,
     MODELS_DIR
 )
@@ -47,9 +48,14 @@ logger = logging.getLogger(__name__)
 
 logger.info("Script started...")
 
+# Enable debug to drastically reduce values
+DEBUG = False
+DEBUG_SIZE = 4
+SPLITS = ["train", "eval", "test"]
+
 SEED = 42
-BATCH_SIZE = 16
-ACCUMULATION_STEPS = 2
+BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
+ACCUMULATION_STEPS = 1 if DEBUG else 2
 LEARNING_RATE = 2e-4
 EPOCHS = 100
 
@@ -108,33 +114,39 @@ def process_query(example):
 
 
 # Process documents for indexing
-documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
-documents_ds = documents_ds.map(
+raw_documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
+documents_ds = raw_documents_ds.map(
     process_documents,
-    remove_columns=documents_ds.column_names,
+    remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
-    batch_size=len(documents_ds) // num_cpus
+    batch_size=len(raw_documents_ds) // num_cpus
 )
 
 # Process data for retrieval (train, valid, test)
 file_mapping = {
     "train": DATA_TRAIN_PROC,
-    "valid": DATA_VALID_PROC,
+    "eval": DATA_EVAL_PROC,
     "test": DATA_TEST_PROC,
 }
 
-data_ds = load_dataset("csv", data_files=file_mapping)
-data_ds = data_ds.map(
+raw_data_ds = load_dataset("csv", data_files=file_mapping)
+tokenized_ds = raw_data_ds.map(
     process_documents,
-    remove_columns=data_ds["train"].column_names,
+    remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
-    batch_size=len(data_ds) // num_cpus
+    batch_size=len(raw_data_ds) // num_cpus
 )
 
 # Merge the indexing stage into the train split
-data_ds["train"] = concatenate_datasets([data_ds["train"], documents_ds]).shuffle(seed=SEED)
+tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
+
+# Reduce data size for all splits
+if DEBUG:
+    for split in SPLITS:
+        tokenized_ds[split] = tokenized_ds[split].select(range(DEBUG_SIZE))
+        raw_data_ds[split] = raw_data_ds[split].select(range(DEBUG_SIZE))
 
 
 # MODEL SETUP
@@ -209,26 +221,44 @@ scheduler = ReduceLROnPlateau(
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
+# Dirty fix, should subclass Seq2SeqTrainer instead
+# Stores external data not used by the model
+# Only used by metrics
+metrics_input_data = raw_data_ds["eval"]
+
+
+def contains_whole_word(word: str, text: str):
+    word = word.strip()
+    text = text.strip()
+
+    # Regex pattern matching exact whole words (case-insensitive)
+    pattern = rf"(?i)\b{re.escape(word)}\b"
+
+    return bool(re.search(pattern, text))
+
 
 def compute_metrics(eval_preds):
-    """Compute substring match accuracy."""
-    preds, labels = eval_preds
+    """Compute metrics."""
+    global metrics_input_data
+    encoded_preds, _ = eval_preds
+    labels = metrics_input_data["document_id"]
 
     # Replace Pytorch pad token id with tokenizer token id
-    preds = np.where(preds != -100, preds, tokenizer.pad_token_id)
-    labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+    encoded_preds = np.where(encoded_preds != -100, encoded_preds, tokenizer.pad_token_id)
+    preds = tokenizer.batch_decode(encoded_preds, skip_special_tokens=True)
 
-    decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-    decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+    if DEBUG:
+        print("Preds:", preds)
+        print("Labels:", labels)
 
     # Compute substring match accuracy
     matches = [
-        int(label.lower().strip() in pred.lower().strip())
-        for pred, label in zip(decoded_preds, decoded_labels)
+        contains_whole_word(label, pred)
+        for pred, label in zip(preds, labels)
     ]
     accuracy = sum(matches) / len(matches)
 
-    return {"substring_match_accuracy": accuracy}
+    return {"match_accuracy": accuracy}
 
 
 # Training arguments
@@ -253,25 +283,26 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=2,
     load_best_model_at_end=True,
-    metric_for_best_model="eval_substring_match_accuracy",
+    metric_for_best_model="eval_match_accuracy",
     greater_is_better=False,
     predict_with_generate=True,
     label_names=["labels"],
     gradient_checkpointing=True,  # Large memory impact
     gradient_checkpointing_kwargs={"use_reentrant": False},
-    dataloader_drop_last=True,
-    dataloader_num_workers=num_cpus,
-    dataloader_prefetch_factor=2,
-    dataloader_pin_memory=True,
+    dataloader_drop_last=False,  # Changes it for all data splits
+    dataloader_num_workers=0 if DEBUG else num_cpus,
+    dataloader_prefetch_factor=None if DEBUG else 2,
+    dataloader_pin_memory=False if DEBUG else True,
     dataloader_persistent_workers=False,  # Causes hanging at the end
 )
+
 
 # Trainer
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    train_dataset=data_ds["train"],
-    eval_dataset=data_ds["valid"],
+    train_dataset=tokenized_ds["train"],
+    eval_dataset=tokenized_ds["eval"],
     processing_class=tokenizer,
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
@@ -279,9 +310,29 @@ trainer = Seq2SeqTrainer(
     callbacks=[EarlyStoppingCallback(early_stopping_patience=6)],
 )
 
+
+def perform_metrics(split: str):
+    """Calculate metrics for a data split and log it"""
+    global metrics_input_data
+    metrics_input_data = raw_data_ds[split]
+    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split)
+    trainer.log(results)
+    trainer.save_metrics(split, results)
+    print(results)
+
+
 if __name__ == "__main__":
     try:
-        trainer.train()
+        trainer_results = trainer.train()
+
+        with open(os.path.join(OUTPUT_DIR, "log_history.json"), "w") as f:
+            json.dump(trainer.state.log_history, f, indent=4)
+
+        trainer.remove_callback(EarlyStoppingCallback)
+        logger.info("Training Completed")
+
+        for split in SPLITS:
+            perform_metrics(split)
     except Exception as e:
         logger.error(f"Training failed: {e}")
     finally:

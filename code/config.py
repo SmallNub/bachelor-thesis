@@ -7,8 +7,8 @@ DATA_DIR_PROC = DATA_DIR + "/processed"
 DATA_TRAIN_RAW = DATA_DIR_RAW + "/train.json"
 DATA_TRAIN_PROC = DATA_DIR_PROC + "/train.csv"
 
-DATA_VALID_RAW = DATA_DIR_RAW + "/dev.json"
-DATA_VALID_PROC = DATA_DIR_PROC + "/valid.csv"
+DATA_EVAL_RAW = DATA_DIR_RAW + "/dev.json"
+DATA_EVAL_PROC = DATA_DIR_PROC + "/eval.csv"
 
 DATA_TEST_RAW = DATA_DIR_RAW + "/test.json"
 DATA_TEST_PROC = DATA_DIR_PROC + "/test.csv"
