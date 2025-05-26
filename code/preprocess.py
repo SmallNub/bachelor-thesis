@@ -56,7 +56,7 @@ def reformat_data(input_file_path: str, output_file_path: str):
     raw_df.loc[:, "document"] = (
         (raw_df["pre_text"] + " ")
         + raw_df["post_text"]
-        + ("\nThis is a table:\n" + raw_df["table"])
+        + ("\nTable:\n" + raw_df["table"])
     )
 
     # Drop the unused columns
