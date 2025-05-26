@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import traceback
 import multiprocessing
 import json
 import re
@@ -335,6 +336,7 @@ if __name__ == "__main__":
             perform_metrics(split)
     except Exception as e:
         logger.error(f"Training failed: {e}")
+        traceback.print_exc()
     finally:
         try:
             model.save_pretrained(OUTPUT_DIR)
@@ -342,6 +344,7 @@ if __name__ == "__main__":
             logger.info("Saved succesfully")
         except Exception as e:
             logger.error(f"Saving failed: {e}")
+            traceback.print_exc()
 
         if dist.is_initialized():
             dist.destroy_process_group()

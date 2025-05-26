@@ -5,8 +5,8 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --time=6:00:00
-#SBATCH --output=slurm/indexing_%j.out
-#SBATCH --error=slurm/indexing_%j.err
+#SBATCH --output=slurm/training_%j.out
+#SBATCH --error=slurm/training_%j.err
 #SBATCH --signal=USR1@300
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
