@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = True
+DEBUG = False
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
