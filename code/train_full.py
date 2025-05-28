@@ -57,7 +57,7 @@ SPLITS = ["train", "eval", "test"]
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
 ACCUMULATION_STEPS = 1 if DEBUG else 2
-LEARNING_RATE = 2e-4
+LEARNING_RATE = 4e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -285,7 +285,7 @@ training_args = Seq2SeqTrainingArguments(
     save_total_limit=2,
     load_best_model_at_end=True,
     metric_for_best_model="eval_match_accuracy",
-    greater_is_better=False,
+    greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
     gradient_checkpointing=True,  # Large memory impact
