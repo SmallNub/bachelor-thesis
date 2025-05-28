@@ -46,7 +46,7 @@ elapsed=$((end_time - start_time))
 printf -v duration "%02d:%02d:%02d" \
     $((elapsed/3600)) $(( (elapsed%3600)/60 )) $((elapsed%60))
 
-log INFO "Main process finished in $duration. Interrupted? $__interrupted"
+log INFO "Main process finished in $duration."
 
 # Copy results back to home
 copy_to_home

@@ -295,6 +295,7 @@ training_args = Seq2SeqTrainingArguments(
     dataloader_prefetch_factor=None if DEBUG else 2,
     dataloader_pin_memory=False if DEBUG else True,
     dataloader_persistent_workers=False,  # Causes hanging at the end
+    torch_compile=True,
 )
 
 
