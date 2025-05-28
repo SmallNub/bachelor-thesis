@@ -28,16 +28,16 @@ log INFO "Script started"
 log INFO "Loading modules..."
 
 module purge
-module load 2023
-module load Python/3.11.3-GCCcore-12.3.0
-module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+module load 2024
+module load CUDA/12.6.0
+module load Python/3.12.3-GCCcore-13.3.0
 
 log INFO "Modules loaded"
 
 # Activate virtualenv
 log INFO "Loading environment..."
 
-source $HOME/venv_glen/bin/activate
+source $HOME/venv_thesis/bin/activate
 
 log INFO "Environment loaded"
 
