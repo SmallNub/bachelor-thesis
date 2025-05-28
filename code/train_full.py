@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = False
+DEBUG = True
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
@@ -295,7 +295,6 @@ training_args = Seq2SeqTrainingArguments(
     dataloader_prefetch_factor=None if DEBUG else 2,
     dataloader_pin_memory=False if DEBUG else True,
     dataloader_persistent_workers=False,  # Causes hanging at the end
-    torch_compile=True,
 )
 
 
