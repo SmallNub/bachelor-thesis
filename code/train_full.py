@@ -211,7 +211,7 @@ optimizer = create_loraplus_optimizer(
 # Learning rate scheduler
 scheduler = ReduceLROnPlateau(
     optimizer=optimizer,
-    mode="min",
+    mode="max",
     factor=0.5,
     patience=2,
     threshold=1e-3,
