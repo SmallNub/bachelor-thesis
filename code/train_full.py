@@ -63,7 +63,7 @@ EPOCHS = 100
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full")
+OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
