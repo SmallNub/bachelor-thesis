@@ -91,7 +91,7 @@ def tokenize(prompt, target):
     model_inputs = tokenizer(
         prompt,
         truncation=True,
-        max_length=4096,
+        max_length=512,  # Model will silently truncate above 512
     )
     labels = tokenizer(
         text_target=target,
@@ -138,7 +138,7 @@ tokenized_ds = raw_data_ds.map(
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
-    batch_size=len(raw_data_ds) // num_cpus
+    batch_size=len(raw_data_ds["eval"]) // num_cpus
 )
 
 # Merge the indexing stage into the train split
