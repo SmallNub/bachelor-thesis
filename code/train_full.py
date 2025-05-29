@@ -110,7 +110,7 @@ def process_documents(example):
 
 def process_query(example):
     prefix = "Answer the question with a document id: Question: "
-    prompt = [prefix + question for question in example['question']]
+    prompt = [prefix + question for question in example["question"]]
     return tokenize(prompt, example["document_id"])
 
 
@@ -131,9 +131,10 @@ file_mapping = {
     "test": DATA_TEST_PROC,
 }
 
+# Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    process_documents,
+    process_query,
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
