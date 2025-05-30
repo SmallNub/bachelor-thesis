@@ -47,12 +47,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# from transformers.utils import logging as hf_logging
+# hf_logging.set_verbosity_info()
+
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
 DEBUG = False
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
+
+COT = True
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
@@ -63,7 +68,7 @@ EPOCHS = 100
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
+OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_cot")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
@@ -102,22 +107,62 @@ def tokenize(prompt, target):
     return model_inputs
 
 
-def process_documents(example):
-    prefix = "Retrieve the document id: Document: "
-    prompt = [prefix + doc for doc in example["document"]]
-    return tokenize(prompt, example["document_id"])
+def build_process_documents(use_cot: bool):
+    if use_cot:
+        prefix = "Retrieve the document id by reasoning step-by-step: Document: "
+    else:
+        prefix = "Retrieve the document id: Document: "
+
+    def create_answer(docid: str):
+        if not use_cot:
+            return docid
+
+        company, year, page = docid.split("/")
+
+        answer = (
+            f"This is about {company} in the year {year} and it is on page {page}. "
+            f"Therefore, the final answer is {docid}."
+        )
+        return answer
+
+    def process_documents(example):
+        prompt = [prefix + doc for doc in example["document"]]
+        answer = [create_answer(ans) for ans in example["document_id"]]
+        tokenized = tokenize(prompt, answer)
+        return tokenized
+    return process_documents
 
 
-def process_query(example):
-    prefix = "Answer the question with a document id: Question: "
-    prompt = [prefix + question for question in example["question"]]
-    return tokenize(prompt, example["document_id"])
+def build_query_documents(use_cot: bool):
+    if use_cot:
+        prefix = "Answer the question with a document id by reasoning step-by-step: Question: "
+    else:
+        prefix = "Answer the question with a document id: Question: "
+
+    def create_answer(docid: str):
+        if not use_cot:
+            return docid
+
+        company, year, page = docid.split("/")
+
+        answer = (
+            f"This is about {company} in the year {year} and it is on page {page}. "
+            f"Therefore, the final answer is {docid}."
+        )
+        return answer
+
+    def process_query(example):
+        prompt = [prefix + question for question in example["question"]]
+        answer = [create_answer(ans) for ans in example["document_id"]]
+        tokenized = tokenize(prompt, answer)
+        return tokenized
+    return process_query
 
 
 # Process documents for indexing
 raw_documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 documents_ds = raw_documents_ds.map(
-    process_documents,
+    build_process_documents(COT),
     remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
@@ -134,7 +179,7 @@ file_mapping = {
 # Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    process_query,
+    build_query_documents(COT),
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
