@@ -1,0 +1,3 @@
+training_12061830 - finqa_full_index - Incorrect training setup, only indexing
+training_12076936 - finqa_full_base_bad - Correct training setup, no context
+training_12081975 - finqa_full_cot_bad - Correct training setup, no context, zero score

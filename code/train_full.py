@@ -57,7 +57,7 @@ DEBUG = False
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
-COT = True
+COT = False
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
@@ -68,7 +68,7 @@ EPOCHS = 100
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_cot")
+OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:
@@ -93,80 +93,68 @@ tokenizer = AutoTokenizer.from_pretrained(
 
 
 def tokenize(prompt, target):
+    # Model will silently truncate above 512 tokens
     model_inputs = tokenizer(
         prompt,
         truncation=True,
-        max_length=512,  # Model will silently truncate above 512
+        max_length=tokenizer.model_max_length,
     )
     labels = tokenizer(
         text_target=target,
         truncation=True,
-        max_length=256,
+        max_length=tokenizer.model_max_length,
     )
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
 
 
-def build_process_documents(use_cot: bool):
-    if use_cot:
-        prefix = "Retrieve the document id by reasoning step-by-step: Document: "
+def build_process_fn(indexing: bool, use_cot: bool):
+    if indexing:
+        if use_cot:
+            prefix = "Retrieve the document id by reasoning step-by-step: Document: "
+        else:
+            prefix = "Retrieve the document id: Document: "
+
+        input_key = "document"
     else:
-        prefix = "Retrieve the document id: Document: "
+        if use_cot:
+            prefix = "Answer the question with a document id by reasoning step-by-step: Question: "
+        else:
+            prefix = "Answer the question with a document id: Question: "
 
-    def create_answer(docid: str):
-        if not use_cot:
-            return docid
+        input_key = "question"
 
-        company, year, page = docid.split("/")
+    def process_examples(examples):
+        prompts = []
+        answers = []
+        for input_text, docid in zip(examples[input_key], examples["document_id"]):
+            company, year, page = docid.split("/")
 
-        answer = (
-            f"This is about {company} in the year {year} and it is on page {page}. "
-            f"Therefore, the final answer is {docid}."
-        )
-        return answer
+            prompt = prefix + f"{company} in {year}, {input_text}"
+            prompts.append(prompt)
 
-    def process_documents(example):
-        prompt = [prefix + doc for doc in example["document"]]
-        answer = [create_answer(ans) for ans in example["document_id"]]
-        tokenized = tokenize(prompt, answer)
+            if use_cot:
+                answer = (
+                    f"This is about {company} in the year {year} and it is on page {page}. "
+                    f"Therefore, the final answer is {docid}."
+                )
+            else:
+                answer = docid
+            answers.append(answer)
+
+        tokenized = tokenize(prompts, answers)
         return tokenized
-    return process_documents
-
-
-def build_query_documents(use_cot: bool):
-    if use_cot:
-        prefix = "Answer the question with a document id by reasoning step-by-step: Question: "
-    else:
-        prefix = "Answer the question with a document id: Question: "
-
-    def create_answer(docid: str):
-        if not use_cot:
-            return docid
-
-        company, year, page = docid.split("/")
-
-        answer = (
-            f"This is about {company} in the year {year} and it is on page {page}. "
-            f"Therefore, the final answer is {docid}."
-        )
-        return answer
-
-    def process_query(example):
-        prompt = [prefix + question for question in example["question"]]
-        answer = [create_answer(ans) for ans in example["document_id"]]
-        tokenized = tokenize(prompt, answer)
-        return tokenized
-    return process_query
+    return process_examples
 
 
 # Process documents for indexing
 raw_documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 documents_ds = raw_documents_ds.map(
-    build_process_documents(COT),
+    build_process_fn(True, COT),
     remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
-    batch_size=len(raw_documents_ds) // num_cpus
+    batch_size=max(1, len(raw_documents_ds) // num_cpus)
 )
 
 # Process data for retrieval (train, valid, test)
@@ -179,11 +167,11 @@ file_mapping = {
 # Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    build_query_documents(COT),
+    build_process_fn(False, COT),
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
-    batch_size=len(raw_data_ds["eval"]) // num_cpus
+    batch_size=max(1, len(raw_data_ds["eval"]) // num_cpus)
 )
 
 # Merge the indexing stage into the train split
