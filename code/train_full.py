@@ -4,8 +4,6 @@ import logging
 import traceback
 import multiprocessing
 import json
-import re
-import numpy as np
 import torch
 import torch.distributed as dist
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -15,7 +13,6 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
-    Seq2SeqTrainer,
     EarlyStoppingCallback,
     BitsAndBytesConfig,
 )
@@ -28,12 +25,13 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
+from custom_trainer import CustomTrainer
 from config import (
     DATA_DOCUMENTS,
     DATA_TRAIN_PROC,
     DATA_EVAL_PROC,
     DATA_TEST_PROC,
-    MODELS_DIR
+    MODELS_DIR,
 )
 
 
@@ -53,7 +51,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = False
+DEBUG = True
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
@@ -256,46 +254,6 @@ scheduler = ReduceLROnPlateau(
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
-# Dirty fix, should subclass Seq2SeqTrainer instead
-# Stores external data not used by the model
-# Only used by metrics
-metrics_input_data = raw_data_ds["eval"]
-
-
-def contains_whole_word(word: str, text: str):
-    word = word.strip()
-    text = text.strip()
-
-    # Regex pattern matching exact whole words (case-insensitive)
-    pattern = rf"(?i)\b{re.escape(word)}\b"
-
-    return bool(re.search(pattern, text))
-
-
-def compute_metrics(eval_preds):
-    """Compute metrics."""
-    global metrics_input_data
-    encoded_preds, _ = eval_preds
-    labels = metrics_input_data["document_id"]
-
-    # Replace Pytorch pad token id with tokenizer token id
-    encoded_preds = np.where(encoded_preds != -100, encoded_preds, tokenizer.pad_token_id)
-    preds = tokenizer.batch_decode(encoded_preds, skip_special_tokens=True)
-
-    if DEBUG:
-        print("Preds:", preds)
-        print("Labels:", labels)
-
-    # Compute substring match accuracy
-    matches = [
-        contains_whole_word(label, pred)
-        for pred, label in zip(preds, labels)
-    ]
-    accuracy = sum(matches) / len(matches)
-
-    return {"match_accuracy": accuracy}
-
-
 # Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
@@ -333,7 +291,7 @@ training_args = Seq2SeqTrainingArguments(
 
 
 # Trainer
-trainer = Seq2SeqTrainer(
+trainer = CustomTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_ds["train"],
@@ -341,15 +299,26 @@ trainer = Seq2SeqTrainer(
     processing_class=tokenizer,
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
-    compute_metrics=compute_metrics,
+    compute_metrics=None,  # Handled by an internal function
     callbacks=[EarlyStoppingCallback(early_stopping_patience=6)],
 )
+
+# Dirty fix for init
+trainer.debug = DEBUG
+trainer.cot = COT
+
+# Dirty fix, workaround for internal functions
+trainer.current_split = "eval"
+trainer.compute_metrics = trainer._compute_metrics
+
+# Stores external data not used by the model
+# Only used by metrics
+trainer.metrics_input_data = raw_data_ds
 
 
 def perform_metrics(split: str):
     """Calculate metrics for a data split and log it"""
-    global metrics_input_data
-    metrics_input_data = raw_data_ds[split]
+    trainer.current_split = split
     results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split)
     trainer.log(results)
     trainer.save_metrics(split, results)
