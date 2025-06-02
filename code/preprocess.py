@@ -1,6 +1,9 @@
 import re
+import sys
+import logging
 import pandas as pd
 
+import create_docid
 from config import (
     DATA_TRAIN_RAW,
     DATA_TRAIN_PROC,
@@ -22,11 +25,19 @@ USED_COLUMNS = [
     "program_re",
 ]
 
+
+logging.basicConfig(
+    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
+
 pattern = re.compile(r'(.*)/page_(\d+)\.pdf')
 
 
 def convert_filename(path: str):
-    """Convert filename into id (ABC/2010/page_12.pdf) -> (ABC/2010/12)"""
+    """Convert filename into a document id (ABC/2010/page_12.pdf) -> (ABC/2010/12)"""
     match = pattern.search(path)
     if match:
         return f"{match.group(1)}/{match.group(2)}"
@@ -41,7 +52,8 @@ def convert_table(table: list[list[str]]):
 
 
 def reformat_data(input_file_path: str, output_file_path: str):
-    """Reformat the FinQA dataset."""
+    """Reformat the FinQA dataset and save it."""
+    logging.info(f"Reformatting {input_file_path}")
     raw_df = pd.read_json(input_file_path)
 
     # Unnest the question data
@@ -65,6 +77,7 @@ def reformat_data(input_file_path: str, output_file_path: str):
     df = raw_df[USED_COLUMNS]
 
     df.to_csv(output_file_path, index=False)
+    logging.info(f"Saved in {output_file_path}")
     return df
 
 
@@ -72,9 +85,10 @@ def create_documents_data(
     train_df: pd.DataFrame,
     eval_df: pd.DataFrame,
     test_df: pd.DataFrame,
-    output_file_path: str,
+    output_file_path: str = None,
 ):
     """Create document and docid data."""
+    logging.info("Creating corpus")
     document_columns = ["document", "document_id"]
     documents_df = pd.concat(
         [
@@ -85,8 +99,12 @@ def create_documents_data(
         axis="index",
     )
     documents_df.drop_duplicates(inplace=True)
+    documents_df.reset_index(drop=True, inplace=True)
 
-    documents_df.to_csv(output_file_path, index=False)
+    if output_file_path is not None:
+        logging.info(f"Saved in {output_file_path}")
+        documents_df.to_csv(output_file_path, index=False)
+
     return documents_df
 
 
@@ -95,4 +113,6 @@ if __name__ == "__main__":
     eval_df = reformat_data(DATA_EVAL_RAW, DATA_EVAL_PROC)
     test_df = reformat_data(DATA_TEST_RAW, DATA_TEST_PROC)
 
-    documents_df = create_documents_data(train_df, eval_df, test_df, DATA_DOCUMENTS)
+    documents_df = create_documents_data(train_df, eval_df, test_df)
+    documents_df = create_docid.main(documents_df)
+    documents_df.to_csv(DATA_DOCUMENTS, index=False)

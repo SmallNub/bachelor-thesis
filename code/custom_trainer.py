@@ -7,7 +7,7 @@ from metrics import extract_docid, compute_match_accuracy
 
 class CustomTrainer(Seq2SeqTrainer):
     debug = False
-    cot = False
+    use_cot = False
     metrics_input_data = None
     current_split = "eval"
     max_acc_loss_mult = 2.0
@@ -26,11 +26,10 @@ class CustomTrainer(Seq2SeqTrainer):
             split = self.current_split
 
         encoded_preds, encoded_labels = eval_preds
-        # labels = self.metrics_input_data[split]["document_id"]
         preds = self.decode(encoded_preds)
         labels = self.decode(encoded_labels)
 
-        if self.cot:
+        if self.use_cot:
             labels = [extract_docid(label) for label in labels]
 
         if self.debug:
@@ -42,6 +41,9 @@ class CustomTrainer(Seq2SeqTrainer):
 
         return {"match_accuracy": accuracy}
 
+    # Label smoothing is not used if the training args do not use label smoothing
+    # It will use the model to output the loss instead of trainer
+
     # Dirty fix, modifies default loss using predictions
     # Called during training, will fail outside training
     # Trainer does call this during eval and test,
@@ -49,7 +51,7 @@ class CustomTrainer(Seq2SeqTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         loss, outputs = super().compute_loss(model, inputs, True, num_items_in_batch)
 
-        # SHIFTING???
+        # Shifting is required for causal LM
         # Simple workaround to save compute, not the same as model.generate
         encoded_preds = torch.argmax(outputs.logits, dim=-1).detach().cpu().numpy()
         encoded_labels = inputs["labels"].detach().cpu().numpy()

@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = True
+DEBUG = True  # change build process fn
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
@@ -126,16 +126,17 @@ def build_process_fn(indexing: bool, use_cot: bool):
         prompts = []
         answers = []
         for input_text, docid in zip(examples[input_key], examples["document_id"]):
-            company, year, page = docid.split("/")
+            # company, year, page = docid.split("/")
 
-            prompt = prefix + f"{company} in {year}, {input_text}"
+            prompt = prefix + f"{input_text}"
             prompts.append(prompt)
 
             if use_cot:
-                answer = (
-                    f"This is about {company} in the year {year} and it is on page {page}. "
-                    f"Therefore, the final answer is {docid}."
-                )
+                # answer = (
+                #     f"This is about {company} in the year {year} and it is on page {page}. "
+                #     f"Therefore, the final answer is {docid}."
+                # )
+                pass
             else:
                 answer = docid
             answers.append(answer)
@@ -305,7 +306,7 @@ trainer = CustomTrainer(
 
 # Dirty fix for init
 trainer.debug = DEBUG
-trainer.cot = COT
+trainer.use_cot = COT
 
 # Dirty fix, workaround for internal functions
 trainer.current_split = "eval"
