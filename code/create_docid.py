@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 
+def update_document_id(data_df: pd.DataFrame, id_map: pd.DataFrame):
+    """Updates the document id while keeping the old ids"""
+    data_df = data_df.rename(columns={"document_id": "old_document_id"})
+
+    map_columns = ["document_id", "old_document_id"]
+    merged_df = pd.merge(data_df, id_map[map_columns], on="old_document_id", how="left")
+    return merged_df
+
+
 def main(documents_df: pd.DataFrame):
     logger.info(f"Loading model: {MODEL_NAME}")
 
@@ -64,7 +73,7 @@ def main(documents_df: pd.DataFrame):
             new_docid += f"{SEPARATOR}{SEPARATOR.join(keyword.split())}"
             total_score += score
 
-        new_docids.append(new_docid)
+        new_docids.append(new_docid.lower())
         scores.append(total_score)
 
     # Replace old document ids
@@ -80,6 +89,7 @@ def main(documents_df: pd.DataFrame):
 
 
 if __name__ == "__main__":
+    logger.error("This will not update the document ids inside the splits, run preprocess.py instead.")
     documents_df = pd.read_csv(DATA_DOCUMENTS)
     documents_df = main(documents_df)
     documents_df.to_csv(DATA_DOCUMENTS, index=False)

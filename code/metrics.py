@@ -1,6 +1,33 @@
 import re
+import numpy as np
 
-from config import SEPARATOR, USE_COMPANY_YEAR_IN_DOCID, DOCID_SIZE
+from config import SEPARATOR, DOCID_SIZE
+
+# Penalty multipliers for the loss (minus base)
+# Base means 1 or no penalty, loss * (base + penalty)
+# No penalty = penalty = 0
+
+# The maximum accumulated penalty (including base)
+MAXIMUM_PENALTY = 2.5
+
+# Penalty for missing the docid entirely (including base)
+# It is not capped by MAXIMUM_PENALTY
+PENALTY_MISSING = 3
+
+# Penalty for exact match
+# Due to other penalties, not matching exactly already receives a penalty
+PENALTY_EXACT_MATCH = 0.1
+
+# Penalty for incorrect parts
+# It is linearly scaled up to this value depending the amount of incorrect parts
+PENALTY_PART_MATCH = 1
+
+# Penalty for incorrect amount of parts
+# Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
+# Due to part match, smaller structures already receive higher penalties
+# Penalty = diff_perc * penalty_score
+PENALTY_STRUCTURE_SCORE = 2
+MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
 # Depends on CoT pattern
@@ -32,61 +59,100 @@ def extract_docid(text: str, use_cot=False, is_label=False) -> str | None:
     return None
 
 
-def deconstruct_docid(docid: str, is_label=False) -> list[str] | None:
+def deconstruct_docid(docid: str) -> list[str]:
     """Attempts to deconstruct the docid."""
-    parts = docid.split(SEPARATOR)
-
-    if len(parts) != DOCID_SIZE:
-        return None
-
+    parts = [part.strip() for part in docid.split(SEPARATOR)]
     return parts
 
 
-def compare_parts(pred_parts: list[str], label_parts: list[str]):
-    for i, (pred_part, label_part) in enumerate(zip(pred_parts, label_parts)):
-        if USE_COMPANY_YEAR_IN_DOCID:
-            pass
-            
+def compute_exact_match_accuracy(pred: str, label: str):
+    """
+    Computes the exact match accuracy and penalty.\\
+    0 = no match, 1 = exact match
+    """
+    accuracy = pred == label
+    penalty = accuracy * PENALTY_EXACT_MATCH
+    return accuracy, penalty
 
 
-def contains_whole_word(word: str, text: str):
-    """Checks if the whole word is inside the text, case-insensitive."""
-    word = word.strip()
-    text = text.strip()
-
-    # Regex pattern matching exact whole words, case-insensitive
-    pattern = rf"(?i)\b{re.escape(word)}\b"
-
-    return bool(re.search(pattern, text))
-
-
-def compute_match_accuracy(preds: list[str], labels: list[str]):
-    """Computes the match accuracy, is the label inside the prediction?"""
-    matches = [
-        contains_whole_word(label, pred)
-        for pred, label in zip(preds, labels)
-    ]
-    accuracy = sum(matches) / len(matches)
-    return accuracy
+def compute_part_match_accuracy(pred_parts: list[str], label_parts: list[str]):
+    """
+    Computes the part match accuracy and penalty by doing exact match between parts.\\
+    Missing parts are considered wrong.
+    """
+    matches = [pred == label for pred, label in zip(pred_parts, label_parts)]
+    accuracy = sum(matches) / len(label_parts)
+    penalty = 1 + accuracy * PENALTY_PART_MATCH
+    return accuracy, penalty
 
 
-# def compute_exact_match_accuracy(pred: str, label: str):
-#     """Computes the match accuracy, is the label inside the prediction?"""
-#     matches = [
-#         contains_whole_word(label, pred)
-#         for pred, label in zip(preds, labels)
-#     ]
-#     accuracy = sum(matches) / len(matches)
-#     return accuracy
+def compute_structure_score(parts: list[str]):
+    """
+    Computes the structure score and penalty.\\
+    Negative = smaller, 0 = correct size, positive = bigger
+    """
+    size_diff = (len(parts) - DOCID_SIZE) / DOCID_SIZE
+    scale = min(abs(size_diff), MAXIMUM_STRUCTURE_DIFF)
+    penalty = scale * PENALTY_STRUCTURE_SCORE
+    return size_diff, penalty
 
 
-# def compute_metrics(preds: list[str], labels: list[str], use_cot=False):
-#     """Computes various metrics and return a dictionary of metrics"""
-#     for pred, label in zip(preds, labels, strict=True):
-#         label_docid = extract_docid(label, use_cot=use_cot, is_label=False)
-#         label_parts = deconstruct_docid(label_docid, is_label=False)
-        
-#         pred_docid = extract_docid(pred, use_cot=use_cot, is_label=False)
-#         pred_parts = deconstruct_docid(pred_docid, is_label=False)
-        
-        
+def compute_metrics(preds: list[str], labels: list[str], use_cot=False):
+    """Computes various metrics and return a dictionary of metrics and an array of penalties."""
+    metrics = {
+        "penalty_capped": 0,
+        "penalty_uncapped": 0,
+        "missing": 0,
+        "exact_match_accuracy": 0,
+        "part_match_accuracy": 0,
+        "structure_score_norm": 0,
+        "structure_score_pos": 0,
+        "structure_score_neg": 0,
+    }
+    penalties = []
+
+    for pred, label in zip(preds, labels, strict=True):
+        pred_docid = extract_docid(pred, use_cot=use_cot, is_label=False)
+
+        if pred_docid is None:
+            metrics["missing"] += 1
+            metrics["structure_score_norm"] -= 1
+            metrics["structure_score_neg"] += 1
+            metrics["penalty_uncapped"] += PENALTY_MISSING
+            penalties.append(PENALTY_MISSING)
+            # Cannot compute other metrics without docid
+            continue
+
+        pred_parts = deconstruct_docid(pred_docid)
+
+        label_docid = extract_docid(label, use_cot=use_cot, is_label=True)
+        label_parts = deconstruct_docid(label_docid)
+
+        # Compute metrics
+        em_acc, p1 = compute_exact_match_accuracy(pred_docid, label_docid)
+        pm_acc, p2 = compute_part_match_accuracy(pred_parts, label_parts)
+        s_score, p3 = compute_structure_score(pred_parts)
+
+        metrics["exact_match_accuracy"] += em_acc
+        metrics["part_match_accuracy"] += pm_acc
+        if s_score > 0:
+            metrics["structure_score_norm"] += 1
+            metrics["structure_score_pos"] += s_score
+        elif s_score < 0:
+            metrics["structure_score_norm"] -= 1
+            metrics["structure_score_neg"] += abs(s_score)
+
+        # Base + penalty
+        penalty = 1 + p1 + p2 + p3
+        metrics["penalty_uncapped"] += penalty
+
+        # Limit the penalty to prevent extremes
+        penalty = min(penalty, MAXIMUM_PENALTY)
+        penalties.append(penalty)
+
+    penalties = np.array(penalties)
+    metrics["penalty_capped"] = penalties.sum()
+
+    metrics = {k: v / len(preds) for k, v in metrics.items()}
+
+    return metrics, penalties

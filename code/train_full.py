@@ -10,7 +10,6 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from datasets import load_dataset, concatenate_datasets
 from transformers import (
     AutoTokenizer,
-    AutoModelForSeq2SeqLM,
     DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
     EarlyStoppingCallback,
@@ -25,13 +24,14 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
-from custom_trainer import CustomTrainer
+from custom_trainer import WeightedLossT5, CustomTrainer
 from config import (
     DATA_DOCUMENTS,
     DATA_TRAIN_PROC,
     DATA_EVAL_PROC,
     DATA_TEST_PROC,
     MODELS_DIR,
+    SEPARATOR,
 )
 
 
@@ -51,11 +51,11 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = True  # change build process fn
+DEBUG = False
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
-COT = False
+USE_COT = False
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
@@ -126,16 +126,16 @@ def build_process_fn(indexing: bool, use_cot: bool):
         prompts = []
         answers = []
         for input_text, docid in zip(examples[input_key], examples["document_id"]):
-            # company, year, page = docid.split("/")
+            company, year, *keywords = docid.split(SEPARATOR)
 
             prompt = prefix + f"{input_text}"
             prompts.append(prompt)
 
             if use_cot:
-                # answer = (
-                #     f"This is about {company} in the year {year} and it is on page {page}. "
-                #     f"Therefore, the final answer is {docid}."
-                # )
+                answer = (
+                    f"This is about {company} in the year {year}. "
+                    f"Therefore, the final answer is {docid}."
+                )
                 pass
             else:
                 answer = docid
@@ -149,7 +149,7 @@ def build_process_fn(indexing: bool, use_cot: bool):
 # Process documents for indexing
 raw_documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
 documents_ds = raw_documents_ds.map(
-    build_process_fn(True, COT),
+    build_process_fn(True, USE_COT),
     remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
@@ -166,7 +166,7 @@ file_mapping = {
 # Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    build_process_fn(False, COT),
+    build_process_fn(False, USE_COT),
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
@@ -194,7 +194,7 @@ bnb_config = BitsAndBytesConfig(
 )
 
 # Load model
-model = AutoModelForSeq2SeqLM.from_pretrained(
+model = WeightedLossT5.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype="auto",
@@ -202,6 +202,8 @@ model = AutoModelForSeq2SeqLM.from_pretrained(
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
 )
+model.use_cot = USE_COT
+model.tokenizer = tokenizer
 
 # Fix for gradient checkpoints
 model.config.use_cache = False
@@ -244,7 +246,7 @@ optimizer = create_loraplus_optimizer(
 # Learning rate scheduler
 scheduler = ReduceLROnPlateau(
     optimizer=optimizer,
-    mode="max",
+    mode="min",
     factor=0.5,
     patience=2,
     threshold=1e-4,
@@ -277,12 +279,15 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=2,
     load_best_model_at_end=True,
-    metric_for_best_model="eval_match_accuracy",
-    greater_is_better=True,
+    metric_for_best_model="eval_loss",
+    greater_is_better=False,
     predict_with_generate=True,
     label_names=["labels"],
+    label_smoothing_factor=0,  # Keep at 0, use custom loss instead
     gradient_checkpointing=True,  # Large memory impact
-    gradient_checkpointing_kwargs={"use_reentrant": False},
+    gradient_checkpointing_kwargs={
+        "use_reentrant": False,  # Suppresses PyTorch warning, may behave unexpectedly
+    },
     dataloader_drop_last=False,  # Changes it for all data splits
     dataloader_num_workers=0 if DEBUG else num_cpus,
     dataloader_prefetch_factor=None if DEBUG else 2,
@@ -290,8 +295,11 @@ training_args = Seq2SeqTrainingArguments(
     dataloader_persistent_workers=False,  # Causes hanging at the end
 )
 
-
 # Trainer
+# Do not pass a loss function here
+# It will break the custom loss function
+# Passing a loss function or setting the label_smoothing_factor inside args
+# will bypass the custom loss implemented inside the model
 trainer = CustomTrainer(
     model=model,
     args=training_args,
@@ -306,7 +314,7 @@ trainer = CustomTrainer(
 
 # Dirty fix for init
 trainer.debug = DEBUG
-trainer.use_cot = COT
+trainer.use_cot = USE_COT
 
 # Dirty fix, workaround for internal functions
 trainer.current_split = "eval"

@@ -51,7 +51,7 @@ def convert_table(table: list[list[str]]):
     return df.to_csv(index=False)
 
 
-def reformat_data(input_file_path: str, output_file_path: str):
+def reformat_data(input_file_path: str, output_file_path: str = None):
     """Reformat the FinQA dataset and save it."""
     logging.info(f"Reformatting {input_file_path}")
     raw_df = pd.read_json(input_file_path)
@@ -76,8 +76,10 @@ def reformat_data(input_file_path: str, output_file_path: str):
     raw_df.rename(columns={"filename": "document_id"}, inplace=True)
     df = raw_df[USED_COLUMNS]
 
-    df.to_csv(output_file_path, index=False)
-    logging.info(f"Saved in {output_file_path}")
+    if output_file_path is not None:
+        df.to_csv(output_file_path, index=False)
+        logging.info(f"Saved in {output_file_path}")
+
     return df
 
 
@@ -102,17 +104,25 @@ def create_documents_data(
     documents_df.reset_index(drop=True, inplace=True)
 
     if output_file_path is not None:
-        logging.info(f"Saved in {output_file_path}")
         documents_df.to_csv(output_file_path, index=False)
+        logging.info(f"Saved in {output_file_path}")
 
     return documents_df
 
 
 if __name__ == "__main__":
-    train_df = reformat_data(DATA_TRAIN_RAW, DATA_TRAIN_PROC)
-    eval_df = reformat_data(DATA_EVAL_RAW, DATA_EVAL_PROC)
-    test_df = reformat_data(DATA_TEST_RAW, DATA_TEST_PROC)
+    train_df = reformat_data(DATA_TRAIN_RAW)
+    eval_df = reformat_data(DATA_EVAL_RAW)
+    test_df = reformat_data(DATA_TEST_RAW)
 
     documents_df = create_documents_data(train_df, eval_df, test_df)
     documents_df = create_docid.main(documents_df)
     documents_df.to_csv(DATA_DOCUMENTS, index=False)
+
+    train_df = create_docid.update_document_id(train_df, documents_df)
+    eval_df = create_docid.update_document_id(eval_df, documents_df)
+    test_df = create_docid.update_document_id(test_df, documents_df)
+
+    train_df.to_csv(DATA_TRAIN_PROC, index=False)
+    eval_df.to_csv(DATA_EVAL_PROC, index=False)
+    test_df.to_csv(DATA_TEST_PROC, index=False)

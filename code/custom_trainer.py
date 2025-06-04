@@ -1,8 +1,107 @@
 import numpy as np
 import torch
-from transformers import Seq2SeqTrainer
+from torch import nn
+from transformers import T5ForConditionalGeneration, Seq2SeqTrainer
 
-from metrics import extract_docid, compute_match_accuracy
+from metrics import compute_metrics
+
+
+# Label smoothing for CrossEntropyLoss
+LABEL_SMOOTHING = 0.1
+
+
+class WeightedLossT5(T5ForConditionalGeneration):
+    use_cot = False
+    tokenizer = None
+
+    def decode_tokens(self, encoded: np.ndarray) -> list[str]:
+        """Replace PyTorch pad token id with tokenizer token id and decode it."""
+        encoded = np.where(encoded != -100, encoded, self.tokenizer.pad_token_id)
+        decoded = self.tokenizer.batch_decode(encoded, skip_special_tokens=True)
+        return decoded
+
+    # Will be called twice during one prediction step, first by generate then forward
+    # Generate will not contain labels thus no loss computation
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        decoder_input_ids=None,
+        decoder_attention_mask=None,
+        head_mask=None,
+        decoder_head_mask=None,
+        cross_attn_head_mask=None,
+        encoder_outputs=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        decoder_inputs_embeds=None,
+        labels=None,
+        use_cache=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        cache_position=None,
+    ):
+        outputs = super().forward(
+            input_ids,
+            attention_mask,
+            decoder_input_ids,
+            decoder_attention_mask,
+            head_mask,
+            decoder_head_mask,
+            cross_attn_head_mask,
+            encoder_outputs,
+            past_key_values,
+            inputs_embeds,
+            decoder_inputs_embeds,
+            labels,
+            use_cache,
+            output_attentions,
+            output_hidden_states,
+            return_dict,
+            cache_position,
+        )
+        # Cannot compute penalties without labels
+        if labels is None:
+            return outputs
+
+        is_output_dict = isinstance(outputs, dict)
+
+        logits = outputs["logits"] if is_output_dict else outputs[1]
+        loss = outputs["loss"] if is_output_dict else outputs[0]
+
+        # Shifting is required for causal LM
+        # Simple workaround to save compute, not the same as model.generate
+        encoded_preds = logits.argmax(dim=-1).detach().cpu().numpy()
+        encoded_labels = labels.detach().cpu().numpy()
+        decoded_preds = self.decode_tokens(encoded_preds)
+        decoded_labels = self.decode_tokens(encoded_labels)
+
+        _, penalties = compute_metrics(decoded_preds, decoded_labels, use_cot=self.use_cot)
+        penalties = torch.tensor(penalties, dtype=torch.float32, device=logits.device)
+
+        B, T, C = logits.shape
+        loss_fct = nn.CrossEntropyLoss(ignore_index=-100, reduction="none", label_smoothing=LABEL_SMOOTHING)
+
+        # Flatten for loss computation
+        loss = loss_fct(logits.view(-1, C), labels.view(-1))  # shape: (B * T,)
+
+        # Reshape back to (B, T)
+        loss = loss.view(B, T)  # shape: (B, T)
+
+        # Mask for ignored tokens
+        mask = (labels != -100).float()  # shape: (B, T)
+
+        # Apply per-sample penalties
+        loss = (loss * mask * penalties[:, None]).sum() / mask.sum()
+
+        # Overwrite the loss
+        if is_output_dict:
+            outputs["loss"] = loss
+        else:
+            outputs[0] = loss
+
+        return outputs
 
 
 class CustomTrainer(Seq2SeqTrainer):
@@ -10,11 +109,8 @@ class CustomTrainer(Seq2SeqTrainer):
     use_cot = False
     metrics_input_data = None
     current_split = "eval"
-    max_acc_loss_mult = 2.0
-    min_acc_loss_mult = 0.5
-    _diff_acc_loss_mult = max_acc_loss_mult - min_acc_loss_mult
 
-    def decode(self, encoded: np.ndarray) -> list[str]:
+    def decode_tokens(self, encoded: np.ndarray) -> list[str]:
         """Replace PyTorch pad token id with tokenizer token id and decode it."""
         encoded = np.where(encoded != -100, encoded, self.processing_class.pad_token_id)
         decoded = self.processing_class.batch_decode(encoded, skip_special_tokens=True)
@@ -26,20 +122,17 @@ class CustomTrainer(Seq2SeqTrainer):
             split = self.current_split
 
         encoded_preds, encoded_labels = eval_preds
-        preds = self.decode(encoded_preds)
-        labels = self.decode(encoded_labels)
-
-        if self.use_cot:
-            labels = [extract_docid(label) for label in labels]
+        preds = self.decode_tokens(encoded_preds)
+        labels = self.decode_tokens(encoded_labels)
 
         if self.debug:
             print("Split:", split)
             print("Preds:", preds)
             print("Labels:", labels)
 
-        accuracy = compute_match_accuracy(preds, labels)
+        metrics, _ = compute_metrics(preds, labels)
 
-        return {"match_accuracy": accuracy}
+        return metrics
 
     # Label smoothing is not used if the training args do not use label smoothing
     # It will use the model to output the loss instead of trainer
@@ -50,13 +143,4 @@ class CustomTrainer(Seq2SeqTrainer):
     # but Seq2SeqTrainer does not - very weird
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         loss, outputs = super().compute_loss(model, inputs, True, num_items_in_batch)
-
-        # Shifting is required for causal LM
-        # Simple workaround to save compute, not the same as model.generate
-        encoded_preds = torch.argmax(outputs.logits, dim=-1).detach().cpu().numpy()
-        encoded_labels = inputs["labels"].detach().cpu().numpy()
-
-        metrics = self._compute_metrics((encoded_preds, encoded_labels), "train")
-        loss *= self.max_acc_loss_mult - self._diff_acc_loss_mult * metrics["match_accuracy"]
-
         return (loss, outputs) if return_outputs else loss
