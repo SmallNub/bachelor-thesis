@@ -1,3 +1,5 @@
 training_12061830 - finqa_full_index - Incorrect training setup, only indexing
 training_12076936 - finqa_full_base_bad - Correct training setup, no context
 training_12081975 - finqa_full_cot_bad - Correct training setup, no context, zero score
+training_12090958 - finqa_full_base_context - Context (company, year in query + docs)
+training_12193923 - finqa_full_base_fail - Model failed to learn

@@ -8,7 +8,7 @@ from config import SEPARATOR, DOCID_SIZE
 # No penalty = penalty = 0
 
 # The maximum accumulated penalty (including base)
-MAXIMUM_PENALTY = 2.5
+MAXIMUM_PENALTY = 2
 
 # Penalty for missing the docid entirely (including base)
 # It is not capped by MAXIMUM_PENALTY
@@ -20,13 +20,13 @@ PENALTY_EXACT_MATCH = 0.1
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 1
+PENALTY_PART_MATCH = 0.5
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 2
+PENALTY_STRUCTURE_SCORE = 1
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
