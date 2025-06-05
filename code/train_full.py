@@ -37,6 +37,7 @@ from config import (
 
 
 # NOTE
+# Code is optimized for 1 H100 GPU with this model size
 # bf16 is used which might not work on some GPUs
 
 # TODO
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = True
+DEBUG = False
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 

@@ -12,6 +12,7 @@ from config import DATA_DOCUMENTS, DATA_DOCUMENTS_AUG, MODELS_DIR
 
 
 # NOTE
+# Code can run on consumer grade GPU
 # It may generate duplicate queries if documents are similar
 
 # TODO
@@ -154,4 +155,4 @@ with torch.no_grad():
 
 # Save results
 pd.DataFrame(output_rows).to_csv(DATA_DOCUMENTS_AUG, index=False)
-print(f"Saved to {DATA_DOCUMENTS_AUG}")
+logger.info(f"Saved to {DATA_DOCUMENTS_AUG}")
