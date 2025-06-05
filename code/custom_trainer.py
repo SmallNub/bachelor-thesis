@@ -81,7 +81,12 @@ class WeightedLossT5(T5ForConditionalGeneration):
         decoded_preds = self.decode_tokens(encoded_preds)
         decoded_labels = self.decode_tokens(encoded_labels)
 
-        _, penalties = compute_metrics(decoded_preds, decoded_labels, use_cot=self.use_cot)
+        _, penalties = compute_metrics(
+            decoded_preds,
+            decoded_labels,
+            use_cot=self.use_cot,
+            current_epoch=self.current_epoch
+        )
         penalties = torch.tensor(penalties, dtype=torch.float32, device=logits.device)
 
         B, T, C = logits.shape
@@ -134,7 +139,12 @@ class CustomTrainer(Seq2SeqTrainer):
             print("Preds:", preds)
             print("Labels:", labels)
 
-        metrics, _ = compute_metrics(preds, labels)
+        metrics, _ = compute_metrics(
+            preds,
+            labels,
+            use_cot=self.use_cot,
+            current_epoch=int(self.state.epoch)
+        )
 
         return metrics
 

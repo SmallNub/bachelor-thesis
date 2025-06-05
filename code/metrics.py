@@ -12,25 +12,25 @@ from config import SEPARATOR, DOCID_SIZE
 WARMUP_EPOCHS = 10
 
 # The maximum accumulated penalty (including base)
-MAXIMUM_PENALTY = 1.25
+MAXIMUM_PENALTY = 1.5
 
 # Penalty for missing the docid entirely (including base)
-# It is not capped by MAXIMUM_PENALTY
-PENALTY_MISSING = 1.5
+# It is capped by MAXIMUM_PENALTY
+PENALTY_MISSING = MAXIMUM_PENALTY
 
 # Penalty for exact match
 # Due to other penalties, not matching exactly already receives a penalty
-PENALTY_EXACT_MATCH = 0.05
+PENALTY_EXACT_MATCH = 0.02
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.15
+PENALTY_PART_MATCH = 0.3
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 0.3
+PENALTY_STRUCTURE_SCORE = 1.0
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
@@ -86,7 +86,7 @@ def compute_part_match_accuracy(pred_parts: list[str], label_parts: list[str]):
     """
     matches = [pred == label for pred, label in zip(pred_parts, label_parts)]
     accuracy = sum(matches) / len(label_parts)
-    penalty = 1 + accuracy * PENALTY_PART_MATCH
+    penalty = accuracy * PENALTY_PART_MATCH
     return accuracy, penalty
 
 
@@ -163,9 +163,9 @@ def compute_metrics(
     np.clip(penalties, 0, MAXIMUM_PENALTY, out=penalties)
     metrics["penalty_capped"] = penalties.sum()
 
-    # Scale the penalty
-    if current_epoch >= 0:
-        penalties *= min(current_epoch / WARMUP_EPOCHS, 1)
+    # Scale the penalty with the warmup
+    if current_epoch >= 0 and current_epoch < WARMUP_EPOCHS:
+        penalties = 1 + (penalties - 1) * min(current_epoch / WARMUP_EPOCHS, 1)
     metrics["penalty_scaled"] = penalties.sum()
 
     metrics = {k: v / len(preds) for k, v in metrics.items()}
