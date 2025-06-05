@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = False
+DEBUG = True
 DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
@@ -133,7 +133,7 @@ def build_process_fn(input_key: str, indexing: bool, use_cot: bool):
         for input_text, docid in zip(examples[input_key], examples["document_id"]):
             company, year, *keywords = docid.split(SEPARATOR)
 
-            prompt = prefix + f"{input_text}"
+            prompt = prefix + f"{company}-{year}, {input_text}"
             prompts.append(prompt)
 
             if use_cot:
@@ -262,7 +262,7 @@ optimizer = create_loraplus_optimizer(
 # Learning rate scheduler
 scheduler = ReduceLROnPlateau(
     optimizer=optimizer,
-    mode="min",
+    mode="max",
     factor=0.5,
     patience=2,
     threshold=1e-4,
@@ -295,8 +295,8 @@ training_args = Seq2SeqTrainingArguments(
     eval_on_start=True,
     save_total_limit=2,
     load_best_model_at_end=True,
-    metric_for_best_model="eval_loss",
-    greater_is_better=False,
+    metric_for_best_model="eval_part_match_accuracy",
+    greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
     label_smoothing_factor=0,  # Keep at 0, use custom loss instead

@@ -12,7 +12,7 @@ from config import SEPARATOR, DOCID_SIZE
 WARMUP_EPOCHS = 10
 
 # The maximum accumulated penalty (including base)
-MAXIMUM_PENALTY = 1.5
+MAXIMUM_PENALTY = 2
 
 # Penalty for missing the docid entirely (including base)
 # It is capped by MAXIMUM_PENALTY
@@ -20,17 +20,17 @@ PENALTY_MISSING = MAXIMUM_PENALTY
 
 # Penalty for exact match
 # Due to other penalties, not matching exactly already receives a penalty
-PENALTY_EXACT_MATCH = 0.02
+PENALTY_EXACT_MATCH = 0.05
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.3
+PENALTY_PART_MATCH = 0.75
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 1.0
+PENALTY_STRUCTURE_SCORE = 1.5
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
@@ -75,7 +75,7 @@ def compute_exact_match_accuracy(pred: str, label: str):
     0 = no match, 1 = exact match
     """
     accuracy = pred == label
-    penalty = accuracy * PENALTY_EXACT_MATCH
+    penalty = (1 - accuracy) * PENALTY_EXACT_MATCH
     return accuracy, penalty
 
 
@@ -86,7 +86,7 @@ def compute_part_match_accuracy(pred_parts: list[str], label_parts: list[str]):
     """
     matches = [pred == label for pred, label in zip(pred_parts, label_parts)]
     accuracy = sum(matches) / len(label_parts)
-    penalty = accuracy * PENALTY_PART_MATCH
+    penalty = (1 - accuracy) * PENALTY_PART_MATCH
     return accuracy, penalty
 
 
