@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
-from transformers import T5ForConditionalGeneration, Seq2SeqTrainer
+from transformers import T5ForConditionalGeneration, Seq2SeqTrainer, TrainerCallback
 
 from metrics import compute_metrics
 
@@ -13,6 +13,10 @@ LABEL_SMOOTHING = 0.1
 class WeightedLossT5(T5ForConditionalGeneration):
     use_cot = False
     tokenizer = None
+    current_epoch = 0
+
+    def set_epoch(self, epoch: int):
+        self.current_epoch = epoch
 
     def decode_tokens(self, encoded: np.ndarray) -> list[str]:
         """Replace PyTorch pad token id with tokenizer token id and decode it."""
@@ -144,3 +148,10 @@ class CustomTrainer(Seq2SeqTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         loss, outputs = super().compute_loss(model, inputs, True, num_items_in_batch)
         return (loss, outputs) if return_outputs else loss
+
+
+class EpochTrackerCallback(TrainerCallback):
+    """Sets the current epoch inside the model."""
+    def on_epoch_begin(self, args, state, control, model, **kwargs):
+        if hasattr(model, 'set_epoch'):
+            model.set_epoch(int(state.epoch))

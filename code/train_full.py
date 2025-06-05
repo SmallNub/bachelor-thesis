@@ -24,15 +24,23 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
-from custom_trainer import WeightedLossT5, CustomTrainer
+from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
 from config import (
     DATA_DOCUMENTS,
+    DATA_DOCUMENTS_AUG,
     DATA_TRAIN_PROC,
     DATA_EVAL_PROC,
     DATA_TEST_PROC,
     MODELS_DIR,
     SEPARATOR,
 )
+
+
+# NOTE
+# bf16 is used which might not work on some GPUs
+
+# TODO
+# Fix CoT
 
 
 # ENVIRONMENT SETUP
@@ -56,11 +64,12 @@ DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
 USE_COT = False
+USE_AUG = True
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
 ACCUMULATION_STEPS = 1 if DEBUG else 2
-LEARNING_RATE = 2e-4
+LEARNING_RATE = 4e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -106,21 +115,17 @@ def tokenize(prompt, target):
     return model_inputs
 
 
-def build_process_fn(indexing: bool, use_cot: bool):
+def build_process_fn(input_key: str, indexing: bool, use_cot: bool):
     if indexing:
         if use_cot:
             prefix = "Retrieve the document id by reasoning step-by-step: Document: "
         else:
             prefix = "Retrieve the document id: Document: "
-
-        input_key = "document"
     else:
         if use_cot:
             prefix = "Answer the question with a document id by reasoning step-by-step: Question: "
         else:
             prefix = "Answer the question with a document id: Question: "
-
-        input_key = "question"
 
     def process_examples(examples):
         prompts = []
@@ -136,7 +141,6 @@ def build_process_fn(indexing: bool, use_cot: bool):
                     f"This is about {company} in the year {year}. "
                     f"Therefore, the final answer is {docid}."
                 )
-                pass
             else:
                 answer = docid
             answers.append(answer)
@@ -147,9 +151,21 @@ def build_process_fn(indexing: bool, use_cot: bool):
 
 
 # Process documents for indexing
-raw_documents_ds = load_dataset("csv", data_files=DATA_DOCUMENTS, split="train")
+if USE_AUG:
+    # Augmented documents use pseudo-queries which should use the retrieval task instead
+    input_key = "pseudo_query"
+    document_task = False
+    document_file = DATA_DOCUMENTS_AUG
+else:
+    # Traditional documents should use the indexing task
+    input_key = "document"
+    document_task = True
+    document_file = DATA_DOCUMENTS
+
+
+raw_documents_ds = load_dataset("csv", data_files=document_file, split="train")
 documents_ds = raw_documents_ds.map(
-    build_process_fn(True, USE_COT),
+    build_process_fn(input_key, document_task, USE_COT),
     remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
@@ -166,7 +182,7 @@ file_mapping = {
 # Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    build_process_fn(False, USE_COT),
+    build_process_fn("question", False, USE_COT),
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
@@ -309,7 +325,10 @@ trainer = CustomTrainer(
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
     compute_metrics=None,  # Handled by an internal function
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=6)],
+    callbacks=[
+        EarlyStoppingCallback(early_stopping_patience=10),
+        EpochTrackerCallback()
+    ],
 )
 
 # Dirty fix for init

@@ -3,30 +3,34 @@ import numpy as np
 
 from config import SEPARATOR, DOCID_SIZE
 
+
 # Penalty multipliers for the loss (minus base)
 # Base means 1 or no penalty, loss * (base + penalty)
 # No penalty = penalty = 0
 
+# Penalty is linearly scaled from 0 to 100% for the first epochs
+WARMUP_EPOCHS = 10
+
 # The maximum accumulated penalty (including base)
-MAXIMUM_PENALTY = 2
+MAXIMUM_PENALTY = 1.25
 
 # Penalty for missing the docid entirely (including base)
 # It is not capped by MAXIMUM_PENALTY
-PENALTY_MISSING = 3
+PENALTY_MISSING = 1.5
 
 # Penalty for exact match
 # Due to other penalties, not matching exactly already receives a penalty
-PENALTY_EXACT_MATCH = 0.1
+PENALTY_EXACT_MATCH = 0.05
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.5
+PENALTY_PART_MATCH = 0.15
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 1
+PENALTY_STRUCTURE_SCORE = 0.3
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
@@ -97,9 +101,15 @@ def compute_structure_score(parts: list[str]):
     return size_diff, penalty
 
 
-def compute_metrics(preds: list[str], labels: list[str], use_cot=False):
+def compute_metrics(
+    preds: list[str],
+    labels: list[str],
+    use_cot: bool = False,
+    current_epoch: int = -1
+):
     """Computes various metrics and return a dictionary of metrics and an array of penalties."""
     metrics = {
+        "penalty_scaled": 0,
         "penalty_capped": 0,
         "penalty_uncapped": 0,
         "missing": 0,
@@ -118,7 +128,6 @@ def compute_metrics(preds: list[str], labels: list[str], use_cot=False):
             metrics["missing"] += 1
             metrics["structure_score_norm"] -= 1
             metrics["structure_score_neg"] += 1
-            metrics["penalty_uncapped"] += PENALTY_MISSING
             penalties.append(PENALTY_MISSING)
             # Cannot compute other metrics without docid
             continue
@@ -144,14 +153,20 @@ def compute_metrics(preds: list[str], labels: list[str], use_cot=False):
 
         # Base + penalty
         penalty = 1 + p1 + p2 + p3
-        metrics["penalty_uncapped"] += penalty
-
-        # Limit the penalty to prevent extremes
-        penalty = min(penalty, MAXIMUM_PENALTY)
         penalties.append(penalty)
 
+    # Save uncapped penalties
     penalties = np.array(penalties)
+    metrics["penalty_uncapped"] = penalties.sum()
+
+    # Limit the penalty to prevent extremes
+    np.clip(penalties, 0, MAXIMUM_PENALTY, out=penalties)
     metrics["penalty_capped"] = penalties.sum()
+
+    # Scale the penalty
+    if current_epoch >= 0:
+        penalties *= min(current_epoch / WARMUP_EPOCHS, 1)
+    metrics["penalty_scaled"] = penalties.sum()
 
     metrics = {k: v / len(preds) for k, v in metrics.items()}
 

@@ -14,6 +14,7 @@ DATA_TEST_RAW = DATA_DIR_RAW + "/test.json"
 DATA_TEST_PROC = DATA_DIR_PROC + "/test.csv"
 
 DATA_DOCUMENTS = DATA_DIR_PROC + "/documents.csv"
+DATA_DOCUMENTS_AUG = DATA_DIR_PROC + "/documents_aug.csv"
 
 
 # MODEL PATHS
