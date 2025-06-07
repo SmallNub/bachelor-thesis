@@ -46,9 +46,16 @@ def build_process_fn(tokenizer, input_key: str, indexing: bool, use_cot: bool, f
     prompt_format = get_prompt_format(indexing, use_cot, format_id)
 
     def process_examples(examples):
+        input_texts = examples[input_key]
+        docids = examples["document_id"]
+
+        if isinstance(docids, str):
+            input_texts = [input_texts]
+            docids = [docids]
+
         prompts = []
         answers = []
-        for input_text, docid in zip(examples[input_key], examples["document_id"]):
+        for input_text, docid in zip(input_texts, docids):
             company, year, *keywords = docid.split(SEPARATOR)
 
             prompt = prompt_format.format(company=company, year=year, query=input_text)
@@ -71,32 +78,42 @@ def build_process_fn(tokenizer, input_key: str, indexing: bool, use_cot: bool, f
 class DynamicDataset(Dataset):
     def __init__(
         self,
-        dataset,
+        data_ds,
+        documents_ds,
         tokenizer,
         seed: int,
-        input_key: str,
         indexing: bool,
         use_cot: bool,
     ):
-        self.dataset = dataset
+        self.data_ds = data_ds
+        self.documents_ds = documents_ds
         self.tokenizer = tokenizer
         self.generator = Generator("cpu").manual_seed(seed)
-        self.input_key = input_key
         self.indexing = indexing
         self.use_cot = use_cot
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.data_ds) + len(self.documents_ds)
 
     def __getitem__(self, idx):
-        sample = self.dataset[idx]
+        if idx < len(self.data_ds):
+            sample = self.data_ds[idx]
+            input_key = "question"
+        else:
+            sample = self.documents_ds[idx - len(self.data_ds)]
+            input_key = "pseudo_query"
 
         process_fn = build_process_fn(
             self.tokenizer,
-            self.input_key,
+            input_key,
             self.indexing,
             self.use_cot,
             torch.randint(0, NUM_PROMPT_FORMATS, (1,), generator=self.generator).item()
         )
         tokenized = process_fn(sample)
+
+        # Unnest values
+        for key in tokenized.keys():
+            tokenized[key] = tokenized[key][0]
+
         return tokenized

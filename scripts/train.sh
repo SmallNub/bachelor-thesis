@@ -15,8 +15,38 @@ model_name="finqa_full_base"
 
 copy_to_home() {
     log INFO "Copying results to home directory"
-    cp -rp "$TMPDIR"/bachelor-thesis/models/$model_name $HOME/bachelor-thesis/models/
-    cp -rp "$TMPDIR"/bachelor-thesis/logs/$model_name $HOME/bachelor-thesis/models/
+    local src_model="$TMPDIR/bachelor-thesis/models/$model_name"
+    local dst_model="$HOME/bachelor-thesis/models/"
+
+    local src_logs="$TMPDIR/bachelor-thesis/logs/$model_name"
+    local dst_logs="$HOME/bachelor-thesis/logs/"
+
+    local max_retries=3
+    local timeout_secs=300  # 5 minutes
+
+    try_rsync() {
+        local src=$1
+        local dst=$2
+        local name=$3
+
+        for attempt in $(seq 1 $max_retries); do
+            log INFO "[$name] Attempt $attempt of $max_retries"
+            if timeout $timeout_secs rsync -a "$src" "$dst"; then
+                log INFO "[$name] Copy successful"
+                return 0
+            else
+                log WARNING "[$name] Copy attempt $attempt failed"
+                sleep 2
+            fi
+        done
+
+        log ERROR "[$name] Failed to copy after $max_retries attempts"
+        return 1
+    }
+
+    try_rsync "$src_model" "$dst_model" "Model"
+    try_rsync "$src_logs" "$dst_logs" "Logs"
+
     log INFO "Results copied successfully"
 }
 
@@ -54,3 +84,6 @@ log INFO "Main process finished in $duration."
 copy_to_home
 
 log INFO "Script finished"
+
+# Wait shortly for buffers to flush
+sleep 1

@@ -25,7 +25,7 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
-from data import build_process_fn
+from process_data import build_process_fn, DynamicDataset
 from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
 from config import (
     DATA_DOCUMENTS,
@@ -61,8 +61,8 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = False
-DEBUG_SIZE = 4
+DEBUG = True
+DEBUG_SIZE = 4  # Using sampling will double it
 SPLITS = ["train", "eval", "test"]
 
 USE_COT = False
@@ -145,13 +145,25 @@ tokenized_ds = raw_data_ds.map(
 )
 
 # Merge the indexing stage into the train split
-tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
+# tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
 
 # Reduce data size for all splits
 if DEBUG:
+    raw_documents_ds = raw_documents_ds.select(range(DEBUG_SIZE))
+
     for split in SPLITS:
         tokenized_ds[split] = tokenized_ds[split].select(range(DEBUG_SIZE))
         raw_data_ds[split] = raw_data_ds[split].select(range(DEBUG_SIZE))
+
+# Create sampled dataset
+train_data = DynamicDataset(
+    raw_data_ds["train"],
+    raw_documents_ds,
+    tokenizer=tokenizer,
+    seed=SEED,
+    indexing=not USE_AUG,
+    use_cot=USE_COT
+)
 
 
 # MODEL SETUP
@@ -189,7 +201,7 @@ lora_config = LoraConfig(
     inference_mode=False,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.2,
+    lora_dropout=0.3,
     target_modules="all-linear",
 )
 model = get_peft_model(model, lora_config)
@@ -221,8 +233,8 @@ scheduler = ReduceLROnPlateau(
     factor=0.5,
     patience=2,
     threshold=1e-4,
-    threshold_mode="rel",
-    cooldown=1,
+    threshold_mode="abs",
+    cooldown=0,
     min_lr=1e-6,
 )
 
@@ -274,14 +286,14 @@ training_args = Seq2SeqTrainingArguments(
 trainer = CustomTrainer(
     model=model,
     args=training_args,
-    train_dataset=tokenized_ds["train"],
+    train_dataset=train_data,
     eval_dataset=tokenized_ds["eval"],
     processing_class=tokenizer,
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
     compute_metrics=None,  # Handled by an internal function
     callbacks=[
-        EarlyStoppingCallback(early_stopping_patience=10),
+        EarlyStoppingCallback(early_stopping_patience=5, early_stopping_threshold=1e-4),
         EpochTrackerCallback()
     ],
 )
@@ -328,18 +340,20 @@ if __name__ == "__main__":
         for split in SPLITS:
             perform_metrics(split)
     except Exception as e:
-        logger.error(f"Training failed: {e}")
         traceback.print_exc()
+        logger.error(f"Training failed: {e}")
     finally:
         try:
             model.save_pretrained(OUTPUT_DIR)
             tokenizer.save_pretrained(OUTPUT_DIR)
             logger.info("Saved succesfully")
         except Exception as e:
-            logger.error(f"Saving failed: {e}")
             traceback.print_exc()
+            logger.error(f"Saving failed: {e}")
 
         if dist.is_initialized():
             dist.destroy_process_group()
 
     logger.info("Script finished")
+    sys.stdout.flush()
+    sys.stderr.flush()

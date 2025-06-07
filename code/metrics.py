@@ -24,17 +24,17 @@ PENALTY_EXACT_MATCH = 0.05
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.4
+PENALTY_PART_MATCH = 0.8
 
 # Penalty for incorrect set of parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.8
+PENALTY_SET_MATCH = 1.2
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 1.6
+PENALTY_STRUCTURE_SCORE = 3
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
@@ -104,7 +104,7 @@ def compute_set_match_accuracy(pred_parts: list[str], label_parts: list[str]):
     label_set = set(label_parts)
     match_set = pred_set.intersection(label_set)
     accuracy = len(match_set) / len(label_set)
-    penalty = (1 - accuracy) * PENALTY_PART_MATCH
+    penalty = (1 - accuracy) * PENALTY_SET_MATCH
     return accuracy, penalty
 
 

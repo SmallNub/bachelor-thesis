@@ -5,3 +5,4 @@ training_12090958 - finqa_full_base_context - Context (company, year in query + 
 training_12193923 - finqa_full_base_fail - Model failed to learn - Incorrect penalty
 training_12194582 - finqa_full_base_fail2 - Model failed to learn (lower lr + penalties) - Incorrect penalty
 training_12215509 - finqa_full_base_pseudo - Only pseudo-queries for indexing
+training_12233893 - finqa_full_base_error - Job failure, slight mistake in penalty, 5 pseudo, higher penalty, 0.2 dropout 0.05 label
