@@ -7,7 +7,7 @@ from metrics import compute_metrics
 
 
 # Label smoothing for CrossEntropyLoss
-LABEL_SMOOTHING = 0.05
+LABEL_SMOOTHING = 0.1
 
 
 class WeightedLossT5(T5ForConditionalGeneration):

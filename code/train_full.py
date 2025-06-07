@@ -25,7 +25,7 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
-from data import DynamicDataset, build_process_fn
+from data import build_process_fn
 from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
 from config import (
     DATA_DOCUMENTS,
@@ -228,10 +228,6 @@ scheduler = ReduceLROnPlateau(
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
-gen_config = GenerationConfig(
-    num_beams=4,
-)
-
 # Training arguments
 training_args = Seq2SeqTrainingArguments(
     output_dir=OUTPUT_DIR,
@@ -301,6 +297,13 @@ trainer.compute_metrics = trainer._compute_metrics
 # Stores external data not used by the model
 # Only used by metrics
 trainer.metrics_input_data = raw_data_ds
+
+# Use beam search instead of greedy decoding
+# Performs better at the cost of higher compute
+gen_config = GenerationConfig(
+    num_beams=10,
+    early_stopping=True,
+)
 
 
 def perform_metrics(split: str):
