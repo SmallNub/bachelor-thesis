@@ -1,6 +1,7 @@
 # Custom
 old/
 slurm-*.out
+slurm/
 models/
 dataset/
 data/
