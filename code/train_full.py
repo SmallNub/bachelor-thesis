@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values
-DEBUG = True
+DEBUG = False
 DEBUG_SIZE = 4  # Using sampling will double it
 SPLITS = ["train", "eval", "test"]
 
@@ -274,7 +274,7 @@ training_args = Seq2SeqTrainingArguments(
     dataloader_drop_last=False,  # Changes it for all data splits
     dataloader_num_workers=0 if DEBUG else num_cpus,
     dataloader_prefetch_factor=None if DEBUG else 2,
-    dataloader_pin_memory=False if DEBUG else True,
+    dataloader_pin_memory=False,  # Might cause problems
     dataloader_persistent_workers=False,  # Causes hanging at the end
 )
 
