@@ -8,16 +8,14 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from config import DATA_DOCUMENTS, DATA_DOCUMENTS_AUG, MODELS_DIR
+from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, MODELS_DIR
 
 
 # NOTE
-# Code can run on consumer grade GPU
+# Code can run on consumer grade GPU (10 mins)
 # It may generate duplicate queries if documents are similar
 
 # TODO
-# Fix duplicate queries
-# Filter using CrossEncoders
 # Rolling window or chunking instead of truncating
 # Use target sentences as documents (guessing required for eval + test)
 
@@ -34,13 +32,13 @@ logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
 # Lower precision for higher performance (negligible impact on results)
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
 
 # Configuration
 MODEL_NAME = "doc2query/all-with_prefix-t5-base-v1"
-NUM_QUERIES = 3
+NUM_QUERIES = 10
 MAX_LENGTH = 64
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 
 logger.info(f"Using model: {MODEL_NAME}")
 
@@ -135,9 +133,9 @@ with torch.no_grad():
             max_length=MAX_LENGTH,
             num_return_sequences=NUM_QUERIES,
             do_sample=True,
-            top_k=50,
-            top_p=0.95,
-            temperature=1.0,
+            top_k=100,
+            top_p=0.92,
+            temperature=1.3,
         )
 
         decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -154,5 +152,5 @@ with torch.no_grad():
                 })
 
 # Save results
-pd.DataFrame(output_rows).to_csv(DATA_DOCUMENTS_AUG, index=False)
-logger.info(f"Saved to {DATA_DOCUMENTS_AUG}")
+pd.DataFrame(output_rows).to_csv(DATA_DOCUMENTS_PSEUDO, index=False)
+logger.info(f"Saved to {DATA_DOCUMENTS_PSEUDO}")

@@ -11,10 +11,12 @@
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-function copy_to_home() {
+model_name="finqa_full_base"
+
+copy_to_home() {
     log INFO "Copying results to home directory"
-    cp -rp "$TMPDIR"/bachelor-thesis/models $HOME/bachelor-thesis/
-    cp -rp "$TMPDIR"/bachelor-thesis/logs $HOME/bachelor-thesis/
+    cp -rp "$TMPDIR"/bachelor-thesis/models/$model_name $HOME/bachelor-thesis/models/
+    cp -rp "$TMPDIR"/bachelor-thesis/logs/$model_name $HOME/bachelor-thesis/models/
     log INFO "Results copied successfully"
 }
 

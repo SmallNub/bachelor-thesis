@@ -14,6 +14,7 @@ from transformers import (
     Seq2SeqTrainingArguments,
     EarlyStoppingCallback,
     BitsAndBytesConfig,
+    GenerationConfig,
 )
 from peft import (
     LoraConfig,
@@ -24,6 +25,7 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
+from data import DynamicDataset, build_process_fn
 from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
 from config import (
     DATA_DOCUMENTS,
@@ -32,7 +34,6 @@ from config import (
     DATA_EVAL_PROC,
     DATA_TEST_PROC,
     MODELS_DIR,
-    SEPARATOR,
 )
 
 
@@ -65,6 +66,9 @@ DEBUG_SIZE = 4
 SPLITS = ["train", "eval", "test"]
 
 USE_COT = False
+
+# Use only pseudo-queries instead of documents
+# Prompt will be truncated when indexing normally
 USE_AUG = True
 
 SEED = 42
@@ -76,6 +80,7 @@ EPOCHS = 100
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
+# This should correspond to the same name inside train.sh
 OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
@@ -99,58 +104,6 @@ tokenizer = AutoTokenizer.from_pretrained(
     use_fast=True
 )
 
-
-def tokenize(prompt, target):
-    # Model will silently truncate above 512 tokens
-    model_inputs = tokenizer(
-        prompt,
-        truncation=True,
-        max_length=tokenizer.model_max_length,
-    )
-    labels = tokenizer(
-        text_target=target,
-        truncation=True,
-        max_length=tokenizer.model_max_length,
-    )
-    model_inputs["labels"] = labels["input_ids"]
-    return model_inputs
-
-
-def build_process_fn(input_key: str, indexing: bool, use_cot: bool):
-    if indexing:
-        if use_cot:
-            prefix = "Retrieve the document id by reasoning step-by-step: Document: "
-        else:
-            prefix = "Retrieve the document id: Document: "
-    else:
-        if use_cot:
-            prefix = "Answer the question with a document id by reasoning step-by-step: Question: "
-        else:
-            prefix = "Answer the question with a document id: Question: "
-
-    def process_examples(examples):
-        prompts = []
-        answers = []
-        for input_text, docid in zip(examples[input_key], examples["document_id"]):
-            company, year, *keywords = docid.split(SEPARATOR)
-
-            prompt = prefix + f"{company}-{year}, {input_text}"
-            prompts.append(prompt)
-
-            if use_cot:
-                answer = (
-                    f"This is about {company} in the year {year}. "
-                    f"Therefore, the final answer is {docid}."
-                )
-            else:
-                answer = docid
-            answers.append(answer)
-
-        tokenized = tokenize(prompts, answers)
-        return tokenized
-    return process_examples
-
-
 # Process documents for indexing
 if USE_AUG:
     # Augmented documents use pseudo-queries which should use the retrieval task instead
@@ -162,11 +115,12 @@ else:
     input_key = "document"
     document_task = True
     document_file = DATA_DOCUMENTS
+    raise NotImplementedError()
 
 
 raw_documents_ds = load_dataset("csv", data_files=document_file, split="train")
 documents_ds = raw_documents_ds.map(
-    build_process_fn(input_key, document_task, USE_COT),
+    build_process_fn(tokenizer, input_key, document_task, USE_COT),
     remove_columns=raw_documents_ds.column_names,
     num_proc=num_cpus,
     batched=True,
@@ -183,7 +137,7 @@ file_mapping = {
 # Process queries for retrieval
 raw_data_ds = load_dataset("csv", data_files=file_mapping)
 tokenized_ds = raw_data_ds.map(
-    build_process_fn("question", False, USE_COT),
+    build_process_fn(tokenizer, "question", False, USE_COT),
     remove_columns=raw_data_ds["train"].column_names,
     num_proc=num_cpus,
     batched=True,
@@ -235,7 +189,7 @@ lora_config = LoraConfig(
     inference_mode=False,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.05,
+    lora_dropout=0.2,
     target_modules="all-linear",
 )
 model = get_peft_model(model, lora_config)
@@ -273,6 +227,10 @@ scheduler = ReduceLROnPlateau(
 )
 
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
+
+gen_config = GenerationConfig(
+    num_beams=4,
+)
 
 # Training arguments
 training_args = Seq2SeqTrainingArguments(
@@ -348,7 +306,7 @@ trainer.metrics_input_data = raw_data_ds
 def perform_metrics(split: str):
     """Calculate metrics for a data split and log it"""
     trainer.current_split = split
-    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split)
+    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split, generation_config=gen_config)
     trainer.log(results)
     trainer.save_metrics(split, results)
     print(results)

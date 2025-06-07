@@ -9,7 +9,7 @@ from config import SEPARATOR, DOCID_SIZE
 # No penalty = penalty = 0
 
 # Penalty is linearly scaled from 0 to 100% for the first epochs
-WARMUP_EPOCHS = 10
+WARMUP_EPOCHS = 5
 
 # The maximum accumulated penalty (including base)
 MAXIMUM_PENALTY = 2
@@ -24,13 +24,17 @@ PENALTY_EXACT_MATCH = 0.05
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.75
+PENALTY_PART_MATCH = 0.4
+
+# Penalty for incorrect set of parts
+# It is linearly scaled up to this value depending the amount of incorrect parts
+PENALTY_PART_MATCH = 0.8
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 1.5
+PENALTY_STRUCTURE_SCORE = 1.6
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
@@ -82,10 +86,24 @@ def compute_exact_match_accuracy(pred: str, label: str):
 def compute_part_match_accuracy(pred_parts: list[str], label_parts: list[str]):
     """
     Computes the part match accuracy and penalty by doing exact match between parts.\\
-    Missing parts are considered wrong.
+    Missing parts are considered wrong, overflow is discarded.
     """
     matches = [pred == label for pred, label in zip(pred_parts, label_parts)]
     accuracy = sum(matches) / len(label_parts)
+    penalty = (1 - accuracy) * PENALTY_PART_MATCH
+    return accuracy, penalty
+
+
+def compute_set_match_accuracy(pred_parts: list[str], label_parts: list[str]):
+    """
+    Computes the set match accuracy and penalty by doing set match between parts.\\
+    Duplicates inside predictions or labels are not used.\\
+    Missing parts are considered wrong, overflow is used.
+    """
+    pred_set = set(pred_parts)
+    label_set = set(label_parts)
+    match_set = pred_set.intersection(label_set)
+    accuracy = len(match_set) / len(label_set)
     penalty = (1 - accuracy) * PENALTY_PART_MATCH
     return accuracy, penalty
 
@@ -115,6 +133,7 @@ def compute_metrics(
         "missing": 0,
         "exact_match_accuracy": 0,
         "part_match_accuracy": 0,
+        "set_match_accuracy": 0,
         "structure_score_norm": 0,
         "structure_score_pos": 0,
         "structure_score_neg": 0,
@@ -140,10 +159,12 @@ def compute_metrics(
         # Compute metrics
         em_acc, p1 = compute_exact_match_accuracy(pred_docid, label_docid)
         pm_acc, p2 = compute_part_match_accuracy(pred_parts, label_parts)
-        s_score, p3 = compute_structure_score(pred_parts)
+        sm_acc, p3 = compute_set_match_accuracy(pred_parts, label_parts)
+        s_score, p4 = compute_structure_score(pred_parts)
 
         metrics["exact_match_accuracy"] += em_acc
         metrics["part_match_accuracy"] += pm_acc
+        metrics["set_match_accuracy"] += sm_acc
         if s_score > 0:
             metrics["structure_score_norm"] += 1
             metrics["structure_score_pos"] += s_score
@@ -152,7 +173,7 @@ def compute_metrics(
             metrics["structure_score_neg"] += abs(s_score)
 
         # Base + penalty
-        penalty = 1 + p1 + p2 + p3
+        penalty = 1 + p1 + p2 + p3 + p4
         penalties.append(penalty)
 
     # Save uncapped penalties

@@ -23,6 +23,7 @@ USED_COLUMNS = [
     "steps",
     "program",
     "program_re",
+    "split"
 ]
 
 
@@ -51,7 +52,7 @@ def convert_table(table: list[list[str]]):
     return df.to_csv(index=False)
 
 
-def reformat_data(input_file_path: str, output_file_path: str = None):
+def reformat_data(split: str, input_file_path: str, output_file_path: str = None):
     """Reformat the FinQA dataset and save it."""
     logging.info(f"Reformatting {input_file_path}")
     raw_df = pd.read_json(input_file_path)
@@ -74,6 +75,9 @@ def reformat_data(input_file_path: str, output_file_path: str = None):
     # Drop the unused columns
     raw_df["filename"] = raw_df["filename"].apply(convert_filename)
     raw_df.rename(columns={"filename": "document_id"}, inplace=True)
+
+    raw_df["split"] = split
+
     df = raw_df[USED_COLUMNS]
 
     if output_file_path is not None:
@@ -91,7 +95,7 @@ def create_documents_data(
 ):
     """Create document and docid data."""
     logging.info("Creating corpus")
-    document_columns = ["document", "document_id"]
+    document_columns = ["document", "document_id", "split"]
     documents_df = pd.concat(
         [
             train_df[document_columns],
@@ -111,9 +115,9 @@ def create_documents_data(
 
 
 if __name__ == "__main__":
-    train_df = reformat_data(DATA_TRAIN_RAW)
-    eval_df = reformat_data(DATA_EVAL_RAW)
-    test_df = reformat_data(DATA_TEST_RAW)
+    train_df = reformat_data("train", DATA_TRAIN_RAW)
+    eval_df = reformat_data("eval", DATA_EVAL_RAW)
+    test_df = reformat_data("test", DATA_TEST_RAW)
 
     documents_df = create_documents_data(train_df, eval_df, test_df)
     documents_df = create_docid.main(documents_df)

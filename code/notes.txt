@@ -4,3 +4,4 @@ training_12081975 - finqa_full_cot_bad - Correct training setup, no context, zer
 training_12090958 - finqa_full_base_context - Context (company, year in query + docs)
 training_12193923 - finqa_full_base_fail - Model failed to learn - Incorrect penalty
 training_12194582 - finqa_full_base_fail2 - Model failed to learn (lower lr + penalties) - Incorrect penalty
+training_12215509 - finqa_full_base_pseudo - Only pseudo-queries for indexing
