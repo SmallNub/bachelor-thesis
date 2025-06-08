@@ -100,7 +100,7 @@ logger.info(f"Using {num_gpus} CUDA device(s)")
 tokenizer = AutoTokenizer.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    use_fast=True
+    use_fast=True,
 )
 
 # Process documents for indexing
@@ -180,7 +180,7 @@ model = WeightedLossT5.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype="auto",
-    local_files_only=True,  # Change for first time downloads
+    local_files_only=False,  # Change for first time downloads
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
 )
