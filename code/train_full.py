@@ -156,8 +156,8 @@ if DEBUG:
 
 # Create sampled dataset
 train_data = DynamicDataset(
-    raw_data_ds["train"].select(range(DEBUG_SIZE // 2)),
-    raw_documents_ds.select(range(DEBUG_SIZE // 2)),
+    raw_data_ds["train"],
+    raw_documents_ds,
     tokenizer=tokenizer,
     seed=SEED,
     indexing=not USE_AUG,
@@ -180,7 +180,7 @@ model = WeightedLossT5.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
     torch_dtype="auto",
-    local_files_only=False,  # Change for first time downloads
+    local_files_only=True,  # Change for first time downloads
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
 )
