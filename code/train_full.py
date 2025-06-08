@@ -14,7 +14,6 @@ from transformers import (
     Seq2SeqTrainingArguments,
     EarlyStoppingCallback,
     BitsAndBytesConfig,
-    GenerationConfig,
 )
 from peft import (
     LoraConfig,
@@ -62,7 +61,7 @@ logger.info("Script started...")
 
 # Enable debug to drastically reduce values
 DEBUG = False
-DEBUG_SIZE = 4  # Using sampling will double it
+DEBUG_SIZE = 4  # Using sampling will behave differently
 SPLITS = ["train", "eval", "test"]
 
 USE_COT = False
@@ -73,8 +72,8 @@ USE_AUG = True
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
-ACCUMULATION_STEPS = 1 if DEBUG else 2
-LEARNING_RATE = 4e-4
+ACCUMULATION_STEPS = 1 if DEBUG else 1
+LEARNING_RATE = 1e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -144,8 +143,8 @@ tokenized_ds = raw_data_ds.map(
     batch_size=max(1, len(raw_data_ds["eval"]) // num_cpus)
 )
 
-# Merge the indexing stage into the train split
-# tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
+# Merge the indexing stage into the train split (overriden by sampling)
+tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
 
 # Reduce data size for all splits
 if DEBUG:
@@ -157,8 +156,8 @@ if DEBUG:
 
 # Create sampled dataset
 train_data = DynamicDataset(
-    raw_data_ds["train"],
-    raw_documents_ds,
+    raw_data_ds["train"].select(range(DEBUG_SIZE // 2)),
+    raw_documents_ds.select(range(DEBUG_SIZE // 2)),
     tokenizer=tokenizer,
     seed=SEED,
     indexing=not USE_AUG,
@@ -201,7 +200,7 @@ lora_config = LoraConfig(
     inference_mode=False,
     r=16,
     lora_alpha=32,
-    lora_dropout=0.3,
+    lora_dropout=0.2,
     target_modules="all-linear",
 )
 model = get_peft_model(model, lora_config)
@@ -230,8 +229,8 @@ optimizer = create_loraplus_optimizer(
 scheduler = ReduceLROnPlateau(
     optimizer=optimizer,
     mode="max",
-    factor=0.5,
-    patience=2,
+    factor=0.7,
+    patience=3,
     threshold=1e-4,
     threshold_mode="abs",
     cooldown=0,
@@ -293,7 +292,7 @@ trainer = CustomTrainer(
     optimizers=(optimizer, scheduler),
     compute_metrics=None,  # Handled by an internal function
     callbacks=[
-        EarlyStoppingCallback(early_stopping_patience=5, early_stopping_threshold=1e-4),
+        EarlyStoppingCallback(early_stopping_patience=8, early_stopping_threshold=1e-4),
         EpochTrackerCallback()
     ],
 )
@@ -310,18 +309,11 @@ trainer.compute_metrics = trainer._compute_metrics
 # Only used by metrics
 trainer.metrics_input_data = raw_data_ds
 
-# Use beam search instead of greedy decoding
-# Performs better at the cost of higher compute
-gen_config = GenerationConfig(
-    num_beams=10,
-    early_stopping=True,
-)
-
 
 def perform_metrics(split: str):
     """Calculate metrics for a data split and log it"""
     trainer.current_split = split
-    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split, generation_config=gen_config)
+    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split)
     trainer.log(results)
     trainer.save_metrics(split, results)
     print(results)

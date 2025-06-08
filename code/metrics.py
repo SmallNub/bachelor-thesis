@@ -9,7 +9,7 @@ from config import SEPARATOR, DOCID_SIZE
 # No penalty = penalty = 0
 
 # Penalty is linearly scaled from 0 to 100% for the first epochs
-WARMUP_EPOCHS = 5
+WARMUP_EPOCHS = 10
 
 # The maximum accumulated penalty (including base)
 MAXIMUM_PENALTY = 2
@@ -20,21 +20,21 @@ PENALTY_MISSING = MAXIMUM_PENALTY
 
 # Penalty for exact match
 # Due to other penalties, not matching exactly already receives a penalty
-PENALTY_EXACT_MATCH = 0.05
+PENALTY_EXACT_MATCH = 0.02
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.8
+PENALTY_PART_MATCH = 0.6
 
 # Penalty for incorrect set of parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_SET_MATCH = 1.2
+PENALTY_SET_MATCH = 1.0
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 3
+PENALTY_STRUCTURE_SCORE = 2.0
 MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
 
 
