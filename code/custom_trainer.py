@@ -11,11 +11,13 @@ LABEL_SMOOTHING = 0.05
 
 
 class WeightedLossT5(T5ForConditionalGeneration):
+    """A T5 model with built-in weighted loss (or penalty)."""
     use_cot = False
     tokenizer = None
     current_epoch = 0
 
     def set_epoch(self, epoch: int):
+        """Set the current epoch."""
         self.current_epoch = epoch
 
     def decode_tokens(self, encoded: np.ndarray) -> list[str]:
@@ -114,6 +116,7 @@ class WeightedLossT5(T5ForConditionalGeneration):
 
 
 class CustomTrainer(Seq2SeqTrainer):
+    """Custom trainer for handling custom metrics."""
     debug = False
     use_cot = False
     metrics_input_data = None
@@ -126,7 +129,7 @@ class CustomTrainer(Seq2SeqTrainer):
         return decoded
 
     def _compute_metrics(self, eval_preds, split: str = None):
-        """Compute metrics."""
+        """Compute custom metrics."""
         if split is None:
             split = self.current_split
 

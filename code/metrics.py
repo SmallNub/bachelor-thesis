@@ -9,33 +9,43 @@ from config import SEPARATOR, DOCID_SIZE
 # No penalty = penalty = 0
 
 # Penalty is linearly scaled from 0 to 100% for the first epochs
-WARMUP_EPOCHS = 10
+WARMUP_EPOCHS = 5
 
-# The maximum accumulated penalty (including base)
+# The maximum accumulated penalty (including base and after the log)
 MAXIMUM_PENALTY = 2
-
-# Penalty for missing the docid entirely (including base)
-# It is capped by MAXIMUM_PENALTY
-PENALTY_MISSING = MAXIMUM_PENALTY
 
 # Penalty for exact match
 # Due to other penalties, not matching exactly already receives a penalty
-PENALTY_EXACT_MATCH = 0.02
+PENALTY_EXACT_MATCH = 0.05
 
 # Penalty for incorrect parts
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_PART_MATCH = 0.6
+PENALTY_PART_MATCH = 2.0
 
 # Penalty for incorrect set of parts
+# Due to part match, not matching parts already receives a penalty
 # It is linearly scaled up to this value depending the amount of incorrect parts
-PENALTY_SET_MATCH = 1.0
+PENALTY_SET_MATCH = 0.5
 
 # Penalty for incorrect amount of parts
 # Capped to a difference of +/-MAXIMUM_STRUCTURE_DIFF% of the amount of parts
 # Due to part match, smaller structures already receive higher penalties
 # Penalty = diff_perc * penalty_score
-PENALTY_STRUCTURE_SCORE = 2.0
-MAXIMUM_STRUCTURE_DIFF = 0.5  # Make this value extremely high for practically no max
+PENALTY_STRUCTURE_SCORE = 0.5
+MAXIMUM_STRUCTURE_DIFF = 0.3  # Make this value extremely high for practically no max
+
+# Combines every penalty at their maximum
+# Calculation should be changed if MAXIMUM_STRUCTURE_DIFF is too high
+MAXIMUM_COMBINED_PENALTY = (
+    PENALTY_EXACT_MATCH +
+    PENALTY_PART_MATCH +
+    PENALTY_SET_MATCH +
+    PENALTY_STRUCTURE_SCORE * MAXIMUM_STRUCTURE_DIFF
+)
+
+# Penalty for missing the docid entirely
+# It is a ratio of the MAXIMUM_COMBINED_PENALTY
+PENALTY_MISSING = 1.0
 
 
 # Depends on CoT pattern
@@ -147,7 +157,8 @@ def compute_metrics(
             metrics["missing"] += 1
             metrics["structure_score_norm"] -= 1
             metrics["structure_score_neg"] += 1
-            penalties.append(PENALTY_MISSING)
+            penalty = MAXIMUM_COMBINED_PENALTY * PENALTY_MISSING
+            penalties.append(penalty)
             # Cannot compute other metrics without docid
             continue
 
@@ -172,7 +183,7 @@ def compute_metrics(
             metrics["structure_score_norm"] -= 1
             metrics["structure_score_neg"] += abs(s_score)
 
-        # Base + penalty
+        # Base + penalty, scaled by log
         penalty = 1 + p1 + p2 + p3 + p4
         penalties.append(penalty)
 
@@ -180,8 +191,9 @@ def compute_metrics(
     penalties = np.array(penalties)
     metrics["penalty_uncapped"] = penalties.sum()
 
-    # Limit the penalty to prevent extremes
-    np.clip(penalties, 0, MAXIMUM_PENALTY, out=penalties)
+    # Log scale and limit the penalty to prevent extremes
+    penalties = np.log(penalties) + 1
+    penalties = np.clip(penalties, 0, MAXIMUM_PENALTY)
     metrics["penalty_capped"] = penalties.sum()
 
     # Scale the penalty with the warmup

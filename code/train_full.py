@@ -4,6 +4,8 @@ import logging
 import traceback
 import multiprocessing
 import json
+import numpy as np
+import random
 import torch
 import torch.distributed as dist
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -39,6 +41,8 @@ from config import (
 # NOTE
 # Code is optimized for 1 H100 GPU with this model size
 # bf16 is used which might not work on some GPUs
+# Data shuffle seems to be different between num_workers=0 and num_workers>0
+# Might not be reproducible?
 
 # TODO
 # Fix CoT
@@ -59,9 +63,9 @@ logger = logging.getLogger(__name__)
 
 logger.info("Script started...")
 
-# Enable debug to drastically reduce values
+# Enable debug to drastically reduce values and log many values
 DEBUG = False
-DEBUG_SIZE = 4  # Using sampling will behave differently
+DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 SPLITS = ["train", "eval", "test"]
 
 USE_COT = False
@@ -72,8 +76,8 @@ USE_AUG = True
 
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
-ACCUMULATION_STEPS = 1 if DEBUG else 1
-LEARNING_RATE = 1e-4
+ACCUMULATION_STEPS = 1 if DEBUG else 2
+LEARNING_RATE = 2e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -92,6 +96,11 @@ logger.info(f"Using {num_cpus} CPU core(s)")
 
 num_gpus = torch.cuda.device_count()
 logger.info(f"Using {num_gpus} CUDA device(s)")
+
+# Set random seeds
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
 
 
 # DATA PREPROCESSING
@@ -161,7 +170,8 @@ train_data = DynamicDataset(
     tokenizer=tokenizer,
     seed=SEED,
     indexing=not USE_AUG,
-    use_cot=USE_COT
+    use_cot=USE_COT,
+    debug=DEBUG,
 )
 
 
@@ -229,8 +239,8 @@ optimizer = create_loraplus_optimizer(
 scheduler = ReduceLROnPlateau(
     optimizer=optimizer,
     mode="max",
-    factor=0.7,
-    patience=3,
+    factor=0.5,
+    patience=1,
     threshold=1e-4,
     threshold_mode="abs",
     cooldown=0,
@@ -292,7 +302,7 @@ trainer = CustomTrainer(
     optimizers=(optimizer, scheduler),
     compute_metrics=None,  # Handled by an internal function
     callbacks=[
-        EarlyStoppingCallback(early_stopping_patience=8, early_stopping_threshold=1e-4),
+        EarlyStoppingCallback(early_stopping_patience=6, early_stopping_threshold=1e-4),
         EpochTrackerCallback()
     ],
 )
