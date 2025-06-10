@@ -26,6 +26,7 @@ from peft import (
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
+from utils import FlushingStreamHandler, FlushingFileHandler
 from process_data import build_process_fn, DynamicDataset
 from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
 from config import (
@@ -51,10 +52,22 @@ from config import (
 # ENVIRONMENT SETUP
 
 # Set logging
+HOME_DIR = os.getenv("HOME")
+JOB_ID = os.getenv("SLURM_JOBID")
+
+handlers = [
+    FlushingStreamHandler(sys.stdout),
+]
+
+# File logging is disabled outside SLURM
+if HOME_DIR is not None and JOB_ID is not None:
+    log_file_path = f"{HOME_DIR}/bachelor-thesis/logs/python_{JOB_ID}.log"
+    handlers.append(FlushingFileHandler(log_file_path, mode="a"))
+
 logging.basicConfig(
     format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
     level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=handlers,
 )
 logger = logging.getLogger(__name__)
 
@@ -331,7 +344,7 @@ def perform_metrics(split: str):
 
 if __name__ == "__main__":
     try:
-        trainer_results = trainer.train()
+        trainer_results = trainer.train(resume_from_checkpoint=True)
 
         with open(os.path.join(OUTPUT_DIR, "log_history.json"), "w") as f:
             json.dump(trainer.state.log_history, f, indent=4)
@@ -357,5 +370,6 @@ if __name__ == "__main__":
             dist.destroy_process_group()
 
     logger.info("Script finished")
+    logging.shutdown()
     sys.stdout.flush()
     sys.stderr.flush()

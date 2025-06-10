@@ -2,9 +2,15 @@
 
 start_time=$(date +%s)
 
+# Set this at the top of your script or configure it as needed
+LOG_FILE="$HOME/bachelor-thesis/logs/bash_$SLURM_JOBID.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE"
+
+# Logging function
 # Function: log [INFO|WARNING|ERROR] <message>
 # Logs to stdout with format [Time] [Level] [File] Message
-function log() {
+log() {
     local level="$1"
     shift
     local message="$*"
@@ -19,7 +25,13 @@ function log() {
     local filename
     filename=$(basename "$src_file")
 
-    echo "[$timestamp] [$level] [$filename:$src_line:$src_func] $message"
+    local log_line="[$timestamp] [$level] [$filename:$src_line:$src_func] $message"
+
+    # Print to stdout
+    echo "$log_line"
+
+    # Append to log file
+    echo "$log_line" >> "$LOG_FILE"
 }
 
 log INFO "Script started"
@@ -50,17 +62,16 @@ mkdir -p "$TMPDIR"/bachelor-thesis
 
 cp -r $HOME/bachelor-thesis/code "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/data "$TMPDIR"/bachelor-thesis
-cp -r $HOME/bachelor-thesis/logs "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/models "$TMPDIR"/bachelor-thesis
 cp -r $HOME/bachelor-thesis/scripts "$TMPDIR"/bachelor-thesis
 
 log INFO "Files copied"
 
-# Load utilities
-source $HOME/bachelor-thesis/scripts/signal_utils.sh
-
 # Change working directory
 cd "$TMPDIR"/bachelor-thesis
+
+# Load utilities
+source $HOME/bachelor-thesis/scripts/signal_utils.sh
 
 end_time=$(date +%s)
 elapsed=$((end_time - start_time))

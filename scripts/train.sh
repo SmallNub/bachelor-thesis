@@ -18,9 +18,6 @@ copy_to_home() {
     local src_model="$TMPDIR/bachelor-thesis/models/$model_name"
     local dst_model="$HOME/bachelor-thesis/models/"
 
-    local src_logs="$TMPDIR/bachelor-thesis/logs/$model_name"
-    local dst_logs="$HOME/bachelor-thesis/logs/"
-
     local max_retries=3
     local timeout_secs=300  # 5 minutes
 
@@ -45,7 +42,6 @@ copy_to_home() {
     }
 
     try_rsync "$src_model" "$dst_model" "Model"
-    try_rsync "$src_logs" "$dst_logs" "Logs"
 
     log INFO "Results copied successfully"
 }
@@ -58,7 +54,7 @@ __on_signal() {
 
 # See Snellius known issues/FAQ
 export NCCL_SOCKET_IFNAME="eno2np0"
-# export PYTHONUNBUFFERED=1
+export PYTHONUNBUFFERED=1
 
 # Start the main process in the background for immediate signal handling
 log INFO "Starting main process in the background"

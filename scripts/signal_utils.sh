@@ -48,9 +48,16 @@ wait_with_signals() {
 
     log INFO "Waiting for process $pid"
 
-    while true; do
+    local retries=0
+    while [[ $retries -lt 10 ]]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            log ERROR "Process $pid no longer exists, breaking wait loop"
+            break
+        fi
+
         wait "$pid"
         status=$?
+        ((retries++))
 
         if [[ $__stop_waiting == true ]]; then
             log WARNING "Interrupted by SIGINT or SIGTERM, not re-waiting"
@@ -68,6 +75,9 @@ wait_with_signals() {
             break
         fi
     done
+
+    log INFO "Amount of retries: $retries"
+    __cleanup_child
 
     return $status
 }
