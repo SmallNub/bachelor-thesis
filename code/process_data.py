@@ -90,9 +90,10 @@ def process_pair(input_text: str, docid: str, format_id: int = 0, use_cot: bool 
 
 
 def create_example_prompt(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
+    full_prompt = ""
     for (input_text, docid), format_id in zip(pairs, format_ids):
         prompt, answer = process_pair(input_text, docid, format_id, use_cot)
-        pass  # fix debug in dataset
+        full_prompt
 
 
 def get_prompt_format(
@@ -120,6 +121,7 @@ def build_process_fn(
     input_key: str,
     indexing: bool,
     use_cot: bool,
+    debug: bool = False,
     **kwargs,
 ):
     """Creates a process function compatible with Huggingface datasets."""
@@ -143,7 +145,7 @@ def build_process_fn(
             prompts.append(prompt)
             answers.append(answer)
 
-        if "debug" in kwargs and kwargs["debug"]:
+        if debug:
             print(f"Prompts: {prompts}\nAnswers: {answers}")
 
         tokenized = tokenize(prompts, answers, tokenizer)
@@ -200,8 +202,8 @@ class DynamicDataset(Dataset):
             input_key,
             self.indexing,
             self.use_cot,
-            format_id=random_int,
-            # debug=self.debug
+            debug=self.debug,
+            format_id=random_int
         )
         tokenized = process_fn(sample)
 

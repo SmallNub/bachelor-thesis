@@ -41,15 +41,22 @@ from config import (
 
 # NOTE
 # Code is optimized for 1 H100 GPU with this model size
+# Deepspeed can be enabled, but will behave differently
 # bf16 is used which might not work on some GPUs
 # Data shuffle seems to be different between num_workers=0 and num_workers>0
 # Might not be reproducible?
+# torch.compile is incompatible
 
 # TODO
 # Fix CoT
 
 
 # ENVIRONMENT SETUP
+
+# Lower precision for higher performance (negligible impact on results)
+torch.set_float32_matmul_precision('high')
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 # Set logging
 HOME_DIR = os.getenv("HOME")
@@ -71,6 +78,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Enables way more logging
 # from transformers.utils import logging as hf_logging
 # hf_logging.set_verbosity_info()
 
@@ -88,8 +96,8 @@ USE_COT = False
 USE_AUG = True
 
 SEED = 42
-BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 16
-ACCUMULATION_STEPS = 1 if DEBUG else 2
+BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 32
+ACCUMULATION_STEPS = 1 if DEBUG else 1
 LEARNING_RATE = 2e-4
 EPOCHS = 100
 
@@ -97,11 +105,12 @@ MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
 # This should correspond to the same name inside train.sh
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base_10")
+OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
-with open("code/ds_config.json", "r", encoding="utf-8") as f:
-    ds_config = json.load(f)
+# Deepspeed config
+# with open("code/ds_config.json", "r", encoding="utf-8") as f:
+#     ds_config = json.load(f)
 
 # Detect number of CPUs and GPUs
 num_cpus = int(os.getenv("SLURM_JOB_CPUS_PER_NODE", multiprocessing.cpu_count()))
@@ -206,15 +215,16 @@ model = WeightedLossT5.from_pretrained(
     local_files_only=False,  # Change for first time downloads
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
+    device_map="auto",  # Incompatible with deepspeed
 )
 model.use_cot = USE_COT
 model.tokenizer = tokenizer
 
 # Fix for gradient checkpoints
-model.config.use_cache = False
-model.enable_input_require_grads()
+# model.config.use_cache = False
+# model.enable_input_require_grads()
 
-model = prepare_model_for_kbit_training(model)
+model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
 # LoRA config (QLoRA + OLoRA)
 lora_config = LoraConfig(
@@ -243,9 +253,10 @@ logger.info(f"Memory footprint: {model.get_memory_footprint():,}")
 # Specialized LoRA optimizer
 optimizer = create_loraplus_optimizer(
     model=model,
-    optimizer_cls=bnb.optim.Adam8bit,
+    optimizer_cls=bnb.optim.AdamW8bit,
     lr=LEARNING_RATE,
-    loraplus_lr_ratio=16,
+    loraplus_lr_ratio=32,
+    loraplus_weight_decay=0.01
 )
 
 # Learning rate scheduler
@@ -276,27 +287,30 @@ training_args = Seq2SeqTrainingArguments(
     optim="adamw_bnb_8bit",
     lr_scheduler_type="reduce_lr_on_plateau",
     bf16=True,
-    deepspeed=ds_config,
+    tf32=True,
+    torch_empty_cache_steps=100,  # Prevent growing memory usage
+    # deepspeed=ds_config,  # Disabled deepspeed
     report_to="tensorboard",
     logging_strategy="epoch",
     save_strategy="epoch",
     eval_strategy="epoch",
     eval_on_start=True,
     save_total_limit=2,
+    restore_callback_states_from_checkpoint=True,
     load_best_model_at_end=True,
     metric_for_best_model="eval_part_match_accuracy",
     greater_is_better=True,
     predict_with_generate=True,
     label_names=["labels"],
     label_smoothing_factor=0,  # Keep at 0, use custom loss instead
-    gradient_checkpointing=True,  # Large memory impact
-    gradient_checkpointing_kwargs={
-        "use_reentrant": False,  # Suppresses PyTorch warning, may behave unexpectedly
-    },
+    # gradient_checkpointing=True,  # Large memory impact
+    # gradient_checkpointing_kwargs={
+    #     "use_reentrant": False,  # Suppresses PyTorch warning, may behave unexpectedly
+    # },
     dataloader_drop_last=False,  # Changes it for all data splits
     dataloader_num_workers=0 if DEBUG else num_cpus,
     dataloader_prefetch_factor=None if DEBUG else 2,
-    dataloader_pin_memory=False,  # Might cause problems
+    dataloader_pin_memory=False if DEBUG else True,
     dataloader_persistent_workers=False,  # Causes hanging at the end
 )
 
@@ -344,7 +358,7 @@ def perform_metrics(split: str):
 
 if __name__ == "__main__":
     try:
-        trainer_results = trainer.train(resume_from_checkpoint=True)
+        trainer_results = trainer.train(resume_from_checkpoint=None)
 
         with open(os.path.join(OUTPUT_DIR, "log_history.json"), "w") as f:
             json.dump(trainer.state.log_history, f, indent=4)
@@ -356,7 +370,9 @@ if __name__ == "__main__":
             perform_metrics(split)
     except Exception as e:
         traceback.print_exc()
+        error = traceback.format_exc()
         logger.error(f"Training failed: {e}")
+        logger.error(error)
     finally:
         try:
             model.save_pretrained(OUTPUT_DIR)
@@ -364,7 +380,9 @@ if __name__ == "__main__":
             logger.info("Saved succesfully")
         except Exception as e:
             traceback.print_exc()
+            error = traceback.format_exc()
             logger.error(f"Saving failed: {e}")
+            logger.error(error)
 
         if dist.is_initialized():
             dist.destroy_process_group()

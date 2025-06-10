@@ -11,7 +11,7 @@
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-model_name="finqa_full_base_10"
+model_name="finqa_full_base"
 
 copy_to_home() {
     log INFO "Copying results to home directory"
@@ -60,7 +60,8 @@ export PYTHONUNBUFFERED=1
 log INFO "Starting main process in the background"
 start_time=$(date +%s)
 
-deepspeed --num_gpus=$SLURM_GPUS_ON_NODE code/train_full.py &
+# deepspeed --num_gpus=$SLURM_GPUS_ON_NODE code/train_full.py &
+python code/train_full.py &
 pid=$!
 
 log INFO "Main process started with pid $pid"

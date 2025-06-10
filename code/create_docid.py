@@ -21,6 +21,11 @@ from config import (
 # Takes around 1 min on consumer grade GPU
 
 
+# Lower precision for higher performance (negligible impact on results)
+torch.set_float32_matmul_precision("high")
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "all-MiniLM-L6-v2"
