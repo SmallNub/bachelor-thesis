@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import multiprocessing
+import random
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -37,11 +38,13 @@ torch.set_float32_matmul_precision("high")
 MODEL_NAME = "all-MiniLM-L6-v2"
 BATCH_SIZE = 32
 
-TOP_N = 5
+TOP_N = 10
 
 # This balances the query distribution by adding 1 extra to the eval/test splits
 # Train split has 1 extra query due to retrieval training
 BALANCE_SPLITS = True
+
+SEED = 42
 
 logger.info(f"Using model: {MODEL_NAME}")
 
@@ -53,6 +56,11 @@ num_gpus = torch.cuda.device_count()
 logger.info(f"Using {num_gpus} CUDA device(s)")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Set random seeds
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
 
 # Load model and tokenizer
 model = SentenceTransformer(

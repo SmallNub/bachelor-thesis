@@ -2,7 +2,9 @@ import os
 import sys
 import logging
 import multiprocessing
+import random
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
@@ -12,7 +14,7 @@ from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, MODELS_DIR
 
 
 # NOTE
-# Code can run on consumer grade GPU (10 mins)
+# Code can run on consumer grade GPU (20 mins)
 # It may generate duplicate queries if documents are similar
 
 # TODO
@@ -36,9 +38,11 @@ torch.set_float32_matmul_precision("high")
 
 # Configuration
 MODEL_NAME = "doc2query/all-with_prefix-t5-base-v1"
-NUM_QUERIES = 10
+NUM_QUERIES = 20
 MAX_LENGTH = 64
-BATCH_SIZE = 8
+BATCH_SIZE = 4
+
+SEED = 42
 
 logger.info(f"Using model: {MODEL_NAME}")
 
@@ -50,6 +54,11 @@ num_gpus = torch.cuda.device_count()
 logger.info(f"Using {num_gpus} CUDA device(s)")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Set random seeds
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
 
 # Load model and tokenizer
 tokenizer = T5Tokenizer.from_pretrained(
@@ -108,8 +117,6 @@ dataloader = DataLoader(
     batch_size=BATCH_SIZE,
     collate_fn=collate_fn,
     shuffle=False,
-    num_workers=num_cpus,
-    prefetch_factor=2,
     pin_memory=True,
 )
 

@@ -37,27 +37,62 @@ def _get_randint(low: int, high: int, generator: Generator = None):
     return torch.randint(low, high, (1,), generator=generator).item()
 
 
-def _get_prompt_format_default(format_id: int = 0):
+def _get_prompt_format(format_id: int = 0, use_cot: bool = False):
     templates = [
-        "Answer the query with a document ID.",
-        "Generate the document ID that answers the question.",
-        "Based on the question, predict the document ID.",
-        "Retrieve a document ID that fits the query.",
-        "Using the question, find the document ID."
+        "Answer the query with a document ID",
+        "Generate the document ID that answers the question",
+        "Based on the question, predict the document ID",
+        "Retrieve a document ID that fits the query",
+        "Using the question, find the document ID"
     ]
     assert len(templates) == NUM_PROMPT_FORMATS, "Templates do not match NUM_PROMPT_FORMATS"
 
+    if use_cot:
+        template = f"{templates[format_id]} by reasoning step-by-step."
+    else:
+        template = f"{templates[format_id]}."
+
     docid = "Format: company-year-keyword-keyword-keyword-keyword"
     query = "Question: {company}-{year}, {query}"
-    prompt = f"Q: {templates[format_id]}\n{docid}\n{query}\nA: "
+    prompt = f"Q: {template}\n{docid}\n{query}\nA: "
     return prompt
 
 
-def _get_prompt_format_cot(n_examples: int, generator: Generator = None):
-    full_template = ""
-    for i in range(n_examples):
-        pass
-    return full_template
+def _get_answer_format(format_id: int = 0, use_cot: bool = False):
+    if not use_cot:
+        return "{docid}"
+
+    # Templates are linked to the prompt templates
+    templates = [
+        "{company} in {year} "
+    ]
+    return templates[format_id]
+
+
+def process_pair(input_text: str, docid: str, format_id: int = 0, use_cot: bool = False):
+    company, year, *keywords = docid.split(SEPARATOR)
+
+    prompt_format = _get_prompt_format(format_id, use_cot)
+    answer_format = _get_answer_format(format_id, use_cot)
+
+    prompt = prompt_format.format(company=company, year=year, query=input_text)
+
+    answer_map = {
+        "docid": docid,
+        "company": company,
+        "year": year,
+    }
+    answer_map.update({f"keyword{i}": keyword for i, keyword in enumerate(keywords)})
+
+    answer = answer_format.format_map(answer_map)
+
+    return prompt, answer
+
+
+def create_example_prompt(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
+    for (input_text, docid), format_id in zip(pairs, format_ids):
+        prompt, answer = process_pair(input_text, docid, format_id, use_cot)
+        pass  # fix debug in dataset
 
 
 def get_prompt_format(
@@ -70,12 +105,12 @@ def get_prompt_format(
         raise NotImplementedError()
 
     if use_cot:
-        prompt = _get_prompt_format_cot()
+        pass
     else:
         if "format_id" not in kwargs:
             kwargs["format_id"] = 0
 
-        prompt = _get_prompt_format_default(kwargs["format_id"])
+        prompt = _get_prompt_format(kwargs["format_id"])
 
     return prompt
 
@@ -88,13 +123,13 @@ def build_process_fn(
     **kwargs,
 ):
     """Creates a process function compatible with Huggingface datasets."""
-    # Get a random prompt
-    prompt_format = get_prompt_format(indexing, use_cot, **kwargs)
+    if indexing:
+        raise NotImplementedError("Indexing is not supported.")
 
-    def process_examples(examples):
+    def process_samples(samples):
         """Process inputs into proper model inputs."""
-        input_texts = examples[input_key]
-        docids = examples["document_id"]
+        input_texts = samples[input_key]
+        docids = samples["document_id"]
 
         if isinstance(docids, str):
             # For singular inputs
@@ -104,18 +139,8 @@ def build_process_fn(
         prompts = []
         answers = []
         for input_text, docid in zip(input_texts, docids):
-            company, year, *keywords = docid.split(SEPARATOR)
-
-            prompt = prompt_format.format(company=company, year=year, query=input_text)
+            prompt, answer = process_pair(input_text, docid, use_cot=use_cot, **kwargs)
             prompts.append(prompt)
-
-            if use_cot:
-                answer = (
-                    f"This is about {company} in the year {year}. "
-                    f"Therefore, the final answer is {docid}."
-                )
-            else:
-                answer = docid
             answers.append(answer)
 
         if "debug" in kwargs and kwargs["debug"]:
@@ -123,7 +148,7 @@ def build_process_fn(
 
         tokenized = tokenize(prompts, answers, tokenizer)
         return tokenized
-    return process_examples
+    return process_samples
 
 
 class DynamicDataset(Dataset):
@@ -176,7 +201,7 @@ class DynamicDataset(Dataset):
             self.indexing,
             self.use_cot,
             format_id=random_int,
-            debug=self.debug
+            # debug=self.debug
         )
         tokenized = process_fn(sample)
 

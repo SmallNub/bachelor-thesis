@@ -1,5 +1,8 @@
 import logging
+import random
 import pandas as pd
+import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
 from keybert import KeyBERT
 
@@ -14,9 +17,14 @@ from config import (
 )
 
 
+# NOTE
+# Takes around 1 min on consumer grade GPU
+
+
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "all-MiniLM-L6-v2"
+SEED = 42
 
 
 def update_document_id(data_df: pd.DataFrame, id_map: pd.DataFrame):
@@ -30,6 +38,11 @@ def update_document_id(data_df: pd.DataFrame, id_map: pd.DataFrame):
 
 def main(documents_df: pd.DataFrame):
     logger.info(f"Loading model: {MODEL_NAME}")
+
+    # Set random seeds
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
 
     # Load model and data
     model = SentenceTransformer(

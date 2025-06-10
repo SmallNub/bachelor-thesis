@@ -84,7 +84,7 @@ MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
 # This should correspond to the same name inside train.sh
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
+OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base_10")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 with open("code/ds_config.json", "r", encoding="utf-8") as f:

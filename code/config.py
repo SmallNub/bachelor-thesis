@@ -34,9 +34,9 @@ MODELS_DIR = "models"
 SEPARATOR = "-"
 
 # Keyword extraction
-KEYWORDS_NGRAM_SIZE = 2
+KEYWORDS_NGRAM_SIZE = 2  # Hard-coded for CoT
 KEYWORDS_DIVERSITY = 0.5
-KEYWORDS_TOP_N = 2
+KEYWORDS_TOP_N = 2  # Hard-coded for CoT
 
 # Docid creation
 USE_COMPANY_YEAR_IN_DOCID = True

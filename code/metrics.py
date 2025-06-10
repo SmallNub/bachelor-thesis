@@ -157,7 +157,7 @@ def compute_metrics(
             metrics["missing"] += 1
             metrics["structure_score_norm"] -= 1
             metrics["structure_score_neg"] += 1
-            penalty = MAXIMUM_COMBINED_PENALTY * PENALTY_MISSING
+            penalty = 1 + MAXIMUM_COMBINED_PENALTY * PENALTY_MISSING
             penalties.append(penalty)
             # Cannot compute other metrics without docid
             continue
