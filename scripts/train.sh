@@ -11,7 +11,7 @@
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-model_name="finqa_full_base"
+model_name="finqa_full_base_10"
 
 copy_to_home() {
     log INFO "Copying results to home directory"
