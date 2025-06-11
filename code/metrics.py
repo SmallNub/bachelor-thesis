@@ -9,7 +9,7 @@ from config import SEPARATOR, DOCID_SIZE
 # No penalty = penalty = 0
 
 # Penalty is linearly scaled from 0 to 100% for the first epochs
-WARMUP_EPOCHS = 5
+WARMUP_EPOCHS = 10
 
 # The maximum accumulated penalty (including base and after the log)
 MAXIMUM_PENALTY = 2
