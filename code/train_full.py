@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 
 # Enables way more logging
 # from transformers.utils import logging as hf_logging
-# hf_logging.set_verbosity_info()
+# hf_logging.set_verbosity_debug()
 
 logger.info("Script started...")
 
@@ -98,7 +98,7 @@ USE_AUG = True
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 32
 ACCUMULATION_STEPS = 1 if DEBUG else 1
-LEARNING_RATE = 2e-4
+LEARNING_RATE = 1e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -211,7 +211,7 @@ bnb_config = BitsAndBytesConfig(
 model = WeightedLossT5.from_pretrained(
     MODEL_NAME,
     cache_dir=MODELS_DIR,
-    torch_dtype="auto",
+    torch_dtype=torch.bfloat16,  # Incompatible with deepspeed?
     local_files_only=False,  # Change for first time downloads
     low_cpu_mem_usage=True,
     quantization_config=bnb_config,
@@ -221,8 +221,8 @@ model.use_cot = USE_COT
 model.tokenizer = tokenizer
 
 # Fix for gradient checkpoints
-# model.config.use_cache = False
-# model.enable_input_require_grads()
+model.config.use_cache = False
+model.enable_input_require_grads()
 
 model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
@@ -358,6 +358,7 @@ def perform_metrics(split: str):
 
 if __name__ == "__main__":
     try:
+        model.train()
         trainer_results = trainer.train(resume_from_checkpoint=None)
 
         with open(os.path.join(OUTPUT_DIR, "log_history.json"), "w") as f:
@@ -365,9 +366,11 @@ if __name__ == "__main__":
 
         trainer.remove_callback(EarlyStoppingCallback)
         logger.info("Training Completed")
+        model.eval()
 
-        for split in SPLITS:
-            perform_metrics(split)
+        with torch.no_grad():
+            for split in SPLITS:
+                perform_metrics(split)
     except Exception as e:
         traceback.print_exc()
         error = traceback.format_exc()
