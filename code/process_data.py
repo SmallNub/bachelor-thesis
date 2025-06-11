@@ -1,3 +1,4 @@
+import warnings
 import torch
 from torch import Generator
 from torch.utils.data import Dataset
@@ -8,7 +9,16 @@ from config import SEPARATOR
 NUM_PROMPT_FORMATS = 5
 
 
-def tokenize(prompt, target, tokenizer):
+def _warn_overflow(model_inputs, tokenizer):
+    for model_input in model_inputs:
+        if len(model_input["input_ids"]) >= tokenizer.model_max_length:
+            warnings.warn("input_ids is exceeding the input limit", RuntimeWarning)
+
+        if "labels" in model_input and len(model_input["labels"]) >= tokenizer.model_max_length:
+            warnings.warn("labels is exceeding the input limit", RuntimeWarning)
+
+
+def tokenize(prompt, target, tokenizer, warn_overflow=False):
     """Tokenize the string inputs into tokens. (target is optional)"""
     # Model will silently truncate above 512 tokens
     model_inputs = tokenizer(
@@ -23,6 +33,10 @@ def tokenize(prompt, target, tokenizer):
             max_length=tokenizer.model_max_length,
         )
         model_inputs["labels"] = labels["input_ids"]
+
+    if warn_overflow:
+        _warn_overflow(model_inputs, tokenizer)
+
     return model_inputs
 
 
@@ -64,7 +78,9 @@ def _get_answer_format(format_id: int = 0, use_cot: bool = False):
 
     # Templates are linked to the prompt templates
     templates = [
-        "{company} in {year} "
+        "The query is about {company} in {year}. "
+        "They are related to {keyword_1} {keyword_2}. "
+        "Company"
     ]
     return templates[format_id]
 
@@ -82,18 +98,23 @@ def process_pair(input_text: str, docid: str, format_id: int = 0, use_cot: bool 
         "company": company,
         "year": year,
     }
-    answer_map.update({f"keyword{i}": keyword for i, keyword in enumerate(keywords)})
+    answer_map.update({f"keyword_{i}": keyword for i, keyword in enumerate(keywords)})
 
     answer = answer_format.format_map(answer_map)
 
     return prompt, answer
 
 
-def create_example_prompt(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
+def create_examples(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
     full_prompt = ""
-    for (input_text, docid), format_id in zip(pairs, format_ids):
+    for i, ((input_text, docid), format_id) in enumerate(zip(pairs, format_ids, strict=True)):
         prompt, answer = process_pair(input_text, docid, format_id, use_cot)
-        full_prompt
+        example = prompt + answer
+        full_prompt += example
+        if i < len(pairs) - 1:
+            full_prompt += "\n"
+
+    return full_prompt
 
 
 def get_prompt_format(

@@ -98,7 +98,7 @@ USE_AUG = True
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 32
 ACCUMULATION_STEPS = 1 if DEBUG else 1
-LEARNING_RATE = 1e-5
+LEARNING_RATE = 2e-5
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
@@ -256,7 +256,6 @@ optimizer = create_loraplus_optimizer(
     optimizer_cls=bnb.optim.AdamW8bit,
     lr=LEARNING_RATE,
     loraplus_lr_ratio=16,
-    loraplus_weight_decay=0.01
 )
 
 # Learning rate scheduler
