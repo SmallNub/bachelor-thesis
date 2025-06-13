@@ -68,7 +68,7 @@ wait_with_signals() {
             log INFO "Process $pid finished successfully"
             break
         elif [[ $status -gt 128 ]]; then
-            log WARNING "Wait interrupted by a signal, re-waiting..."
+            log WARNING "Wait interrupted by a signal with status $status, re-waiting..."
             continue
         else
             log ERROR "Process $pid exited with error status $status"

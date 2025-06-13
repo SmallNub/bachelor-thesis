@@ -4,38 +4,35 @@ import logging
 import traceback
 import multiprocessing
 import json
-import numpy as np
-import random
 import torch
 import torch.distributed as dist
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from datasets import load_dataset, concatenate_datasets
 from transformers import (
-    AutoTokenizer,
     DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
     EarlyStoppingCallback,
-    BitsAndBytesConfig,
 )
 from peft import (
     LoraConfig,
     TaskType,
+    PeftModel,
     get_peft_model,
     prepare_model_for_kbit_training,
 )
 from peft.optimizers import create_loraplus_optimizer
 import bitsandbytes as bnb
 
-from utils import FlushingStreamHandler, FlushingFileHandler
-from process_data import build_process_fn, DynamicDataset
-from custom_trainer import WeightedLossT5, CustomTrainer, EpochTrackerCallback
+from utils import (
+    init_logging,
+    enable_tf32,
+    set_seed,
+    ResourceMonitorCallback,
+)
+from process_data import load_data, DynamicDataset
+from model import load_tokenizer, load_model, CustomTrainer, EpochTrackerCallback
 from config import (
-    DATA_DOCUMENTS,
-    DATA_DOCUMENTS_AUG,
-    DATA_TRAIN_PROC,
-    DATA_EVAL_PROC,
-    DATA_TEST_PROC,
     MODELS_DIR,
+    SPLITS,
 )
 
 
@@ -53,46 +50,33 @@ from config import (
 
 # ENVIRONMENT SETUP
 
-# Lower precision for higher performance (negligible impact on results)
-torch.set_float32_matmul_precision('high')
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-
-# Set logging
-HOME_DIR = os.getenv("HOME")
-JOB_ID = os.getenv("SLURM_JOBID")
-
-handlers = [
-    FlushingStreamHandler(sys.stdout),
-]
-
-# File logging is disabled outside SLURM
-if HOME_DIR is not None and JOB_ID is not None:
-    log_file_path = f"{HOME_DIR}/bachelor-thesis/logs/python_{JOB_ID}.log"
-    handlers.append(FlushingFileHandler(log_file_path, mode="a"))
-
-logging.basicConfig(
-    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
-    level=logging.INFO,
-    handlers=handlers,
-)
-logger = logging.getLogger(__name__)
-
 # Enables way more logging
 # from transformers.utils import logging as hf_logging
 # hf_logging.set_verbosity_debug()
+
+enable_tf32()
+
+home_dir = os.getenv("HOME")
+job_id = os.getenv("SLURM_JOBID")
+
+init_logging(home_dir, job_id)
+logger = logging.getLogger(__name__)
 
 logger.info("Script started...")
 
 # Enable debug to drastically reduce values and log many values
 DEBUG = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
-SPLITS = ["train", "eval", "test"]
 
-USE_COT = False
+USE_COT = True
+
+# Number of examples to use for prompts
+# Can be used with or without CoT
+N_EXAMPLES = 2
 
 # Use only pseudo-queries instead of documents
 # Prompt will be truncated when indexing normally
+# Indexing is no longer supported
 USE_AUG = True
 
 SEED = 42
@@ -105,8 +89,12 @@ MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
 # This should correspond to the same name inside train.sh
-OUTPUT_DIR = os.path.join(MODELS_DIR, "finqa_full_base")
+OUTPUT_DIR = os.path.join(MODELS_DIR, f"finqa_{job_id}")
 logger.info(f"Output location: {OUTPUT_DIR}")
+
+# Use an already trained model
+USE_TRAINED = True
+TRAINED_DIR = os.path.join(MODELS_DIR, "finqa_base_10")
 
 # Deepspeed config
 # with open("code/ds_config.json", "r", encoding="utf-8") as f:
@@ -119,106 +107,46 @@ logger.info(f"Using {num_cpus} CPU core(s)")
 num_gpus = torch.cuda.device_count()
 logger.info(f"Using {num_gpus} CUDA device(s)")
 
-# Set random seeds
-torch.manual_seed(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
+set_seed(SEED)
 
 
 # DATA PREPROCESSING
 
-# Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME,
-    cache_dir=MODELS_DIR,
-    use_fast=True,
-)
+tokenizer = load_tokenizer(MODEL_NAME, MODELS_DIR)
 
-# Process documents for indexing
-if USE_AUG:
-    # Augmented documents use pseudo-queries which should use the retrieval task instead
-    input_key = "pseudo_query"
-    document_task = False
-    document_file = DATA_DOCUMENTS_AUG
-else:
-    # Traditional documents should use the indexing task
-    input_key = "document"
-    document_task = True
-    document_file = DATA_DOCUMENTS
-    raise NotImplementedError()
-
-
-raw_documents_ds = load_dataset("csv", data_files=document_file, split="train")
-documents_ds = raw_documents_ds.map(
-    build_process_fn(tokenizer, input_key, document_task, USE_COT),
-    remove_columns=raw_documents_ds.column_names,
-    num_proc=num_cpus,
-    batched=True,
-    batch_size=max(1, len(raw_documents_ds) // num_cpus)
-)
-
-# Process data for retrieval (train, valid, test)
-file_mapping = {
-    "train": DATA_TRAIN_PROC,
-    "eval": DATA_EVAL_PROC,
-    "test": DATA_TEST_PROC,
-}
-
-# Process queries for retrieval
-raw_data_ds = load_dataset("csv", data_files=file_mapping)
-tokenized_ds = raw_data_ds.map(
-    build_process_fn(tokenizer, "question", False, USE_COT),
-    remove_columns=raw_data_ds["train"].column_names,
-    num_proc=num_cpus,
-    batched=True,
-    batch_size=max(1, len(raw_data_ds["eval"]) // num_cpus)
-)
-
-# Merge the indexing stage into the train split (overriden by sampling)
-tokenized_ds["train"] = concatenate_datasets([tokenized_ds["train"], documents_ds])
-
-# Reduce data size for all splits
-if DEBUG:
-    raw_documents_ds = raw_documents_ds.select(range(DEBUG_SIZE))
-
-    for split in SPLITS:
-        tokenized_ds[split] = tokenized_ds[split].select(range(DEBUG_SIZE))
-        raw_data_ds[split] = raw_data_ds[split].select(range(DEBUG_SIZE))
+raw_documents_ds, raw_data_ds = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
 
 # Create sampled dataset
 train_data = DynamicDataset(
     raw_data_ds["train"],
-    raw_documents_ds,
     tokenizer=tokenizer,
+    documents_ds=raw_documents_ds,
+    format_id=-1,
+    n_examples=N_EXAMPLES,
     seed=SEED,
     indexing=not USE_AUG,
     use_cot=USE_COT,
     debug=DEBUG,
 )
 
+eval_data = {}
+for split in SPLITS:
+    eval_data[split] = DynamicDataset(
+        raw_data_ds[split],
+        tokenizer=tokenizer,
+        documents_ds=None,
+        format_id=0,
+        n_examples=N_EXAMPLES,
+        seed=SEED,
+        indexing=not USE_AUG,
+        use_cot=USE_COT,
+        debug=DEBUG,
+    )
+
 
 # MODEL SETUP
 
-# Quantization config
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
-)
-
-# Load model
-model = WeightedLossT5.from_pretrained(
-    MODEL_NAME,
-    cache_dir=MODELS_DIR,
-    torch_dtype=torch.bfloat16,  # Incompatible with deepspeed?
-    local_files_only=False,  # Change for first time downloads
-    low_cpu_mem_usage=True,
-    quantization_config=bnb_config,
-    device_map="auto",  # Incompatible with deepspeed
-)
-model.use_cot = USE_COT
-model.tokenizer = tokenizer
+model = load_model(MODEL_NAME, MODELS_DIR, tokenizer, USE_COT)
 
 # Fix for gradient checkpoints
 model.config.use_cache = False
@@ -226,17 +154,20 @@ model.enable_input_require_grads()
 
 model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
-# LoRA config (QLoRA + OLoRA)
-lora_config = LoraConfig(
-    init_lora_weights="olora",
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.2,
-    target_modules="all-linear",
-)
-model = get_peft_model(model, lora_config)
+if USE_TRAINED:
+    model = PeftModel.from_pretrained(model, TRAINED_DIR, is_trainable=True)
+else:
+    # LoRA config (QLoRA + OLoRA)
+    lora_config = LoraConfig(
+        init_lora_weights="olora",
+        task_type=TaskType.SEQ_2_SEQ_LM,
+        inference_mode=False,
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.2,
+        target_modules="all-linear",
+    )
+    model = get_peft_model(model, lora_config)
 
 # Print model statistics
 # Code from model.print_trainable_parameters()
@@ -322,14 +253,15 @@ trainer = CustomTrainer(
     model=model,
     args=training_args,
     train_dataset=train_data,
-    eval_dataset=tokenized_ds["eval"],
+    eval_dataset=eval_data["eval"],
     processing_class=tokenizer,
     data_collator=data_collator,
     optimizers=(optimizer, scheduler),
     compute_metrics=None,  # Handled by an internal function
     callbacks=[
         EarlyStoppingCallback(early_stopping_patience=6, early_stopping_threshold=1e-4),
-        EpochTrackerCallback()
+        EpochTrackerCallback(),
+        ResourceMonitorCallback(logger)
     ],
 )
 
@@ -349,7 +281,7 @@ trainer.metrics_input_data = raw_data_ds
 def perform_metrics(split: str):
     """Calculate metrics for a data split and log it"""
     trainer.current_split = split
-    results = trainer.evaluate(tokenized_ds[split], metric_key_prefix=split)
+    results = trainer.evaluate(eval_data[split], metric_key_prefix=split)
     trainer.log(results)
     trainer.save_metrics(split, results)
     print(results)
@@ -371,7 +303,6 @@ if __name__ == "__main__":
             for split in SPLITS:
                 perform_metrics(split)
     except Exception as e:
-        traceback.print_exc()
         error = traceback.format_exc()
         logger.error(f"Training failed: {e}")
         logger.error(error)
@@ -381,7 +312,6 @@ if __name__ == "__main__":
             tokenizer.save_pretrained(OUTPUT_DIR)
             logger.info("Saved succesfully")
         except Exception as e:
-            traceback.print_exc()
             error = traceback.format_exc()
             logger.error(f"Saving failed: {e}")
             logger.error(error)

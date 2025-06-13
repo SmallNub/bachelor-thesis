@@ -5,6 +5,7 @@ slurm/
 models/
 dataset/
 data/
+logs/
 .vscode
 
 # Byte-compiled / optimized / DLL files

@@ -1,13 +1,54 @@
 import numpy as np
 import torch
 from torch import nn
-from transformers import T5ForConditionalGeneration, Seq2SeqTrainer, TrainerCallback
+from transformers import (
+    AutoTokenizer,
+    T5ForConditionalGeneration,
+    BitsAndBytesConfig,
+    Seq2SeqTrainer,
+    TrainerCallback,
+)
 
 from metrics import compute_metrics
 
 
 # Label smoothing for CrossEntropyLoss
 LABEL_SMOOTHING = 0.05
+
+
+def load_tokenizer(model_name, models_dir):
+    """Load the tokenizer."""
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        cache_dir=models_dir,
+        use_fast=True,
+    )
+    return tokenizer
+
+
+def load_model(model_name, models_dir, tokenizer, use_cot):
+    """Load the quantized model."""
+    # Quantization config
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    # Load model
+    model = WeightedLossT5.from_pretrained(
+        model_name,
+        cache_dir=models_dir,
+        torch_dtype=torch.bfloat16,  # Incompatible with deepspeed?
+        local_files_only=False,  # Change for first time downloads
+        low_cpu_mem_usage=True,
+        quantization_config=bnb_config,
+        device_map="auto",  # Incompatible with deepspeed
+    )
+    model.tokenizer = tokenizer
+    model.use_cot = use_cot
+    return model
 
 
 class WeightedLossT5(T5ForConditionalGeneration):

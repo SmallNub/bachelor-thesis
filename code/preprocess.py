@@ -1,8 +1,10 @@
 import re
-import sys
 import logging
 import pandas as pd
 
+from utils import (
+    init_logging,
+)
 import create_docid
 from config import (
     DATA_TRAIN_RAW,
@@ -27,11 +29,7 @@ USED_COLUMNS = [
 ]
 
 
-logging.basicConfig(
-    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+init_logging()
 logger = logging.getLogger(__name__)
 
 pattern = re.compile(r'(.*)/page_(\d+)\.pdf')

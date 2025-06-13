@@ -30,6 +30,8 @@ MODELS_DIR = "models"
 
 # CONFIG
 
+SPLITS = ["train", "eval", "test"]
+
 # Separator used for parts inside the docid
 SEPARATOR = "-"
 

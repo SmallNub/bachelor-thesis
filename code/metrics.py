@@ -49,7 +49,7 @@ PENALTY_MISSING = 1.0
 
 
 # Depends on CoT pattern
-cot_pattern = re.compile(r"final answer is (\w+)\.")
+cot_pattern = re.compile(r"answer is ([A-z0-9\-]+)\.")
 
 
 def extract_docid(text: str, use_cot=False, is_label=False) -> str | None:

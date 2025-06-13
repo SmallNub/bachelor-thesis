@@ -1,8 +1,6 @@
 import os
-import sys
 import logging
 import multiprocessing
-import random
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -10,6 +8,11 @@ from sentence_transformers import SentenceTransformer
 import torch
 from sentence_transformers import util
 
+from utils import (
+    init_logging,
+    enable_tf32,
+    set_seed,
+)
 from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, DATA_DOCUMENTS_AUG, MODELS_DIR
 
 
@@ -23,18 +26,11 @@ from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, DATA_DOCUMENTS_AUG, MO
 # ENVIRONMENT SETUP
 
 # Set logging
-logging.basicConfig(
-    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+init_logging()
 logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
-# Lower precision for higher performance (negligible impact on results)
-torch.set_float32_matmul_precision("high")
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+enable_tf32()
 
 # Configuration
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -47,6 +43,7 @@ TOP_N = 10
 BALANCE_SPLITS = True
 
 SEED = 42
+set_seed(SEED)
 
 logger.info(f"Using model: {MODEL_NAME}")
 
@@ -58,11 +55,6 @@ num_gpus = torch.cuda.device_count()
 logger.info(f"Using {num_gpus} CUDA device(s)")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Set random seeds
-torch.manual_seed(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
 
 # Load model and tokenizer
 model = SentenceTransformer(

@@ -1,15 +1,17 @@
 import os
-import sys
 import logging
 import multiprocessing
-import random
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from utils import (
+    init_logging,
+    enable_tf32,
+    set_seed,
+)
 from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, MODELS_DIR
 
 
@@ -25,18 +27,11 @@ from config import DATA_DOCUMENTS, DATA_DOCUMENTS_PSEUDO, MODELS_DIR
 # ENVIRONMENT SETUP
 
 # Set logging
-logging.basicConfig(
-    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+init_logging()
 logger = logging.getLogger(__name__)
 logger.info("Script started...")
 
-# Lower precision for higher performance (negligible impact on results)
-torch.set_float32_matmul_precision("high")
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+enable_tf32()
 
 # Configuration
 MODEL_NAME = "doc2query/all-with_prefix-t5-base-v1"
@@ -57,10 +52,7 @@ logger.info(f"Using {num_gpus} CUDA device(s)")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Set random seeds
-torch.manual_seed(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
+set_seed(SEED)
 
 # Load model and tokenizer
 tokenizer = T5Tokenizer.from_pretrained(

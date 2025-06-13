@@ -2,20 +2,63 @@ import warnings
 import torch
 from torch import Generator
 from torch.utils.data import Dataset
+from datasets import load_dataset
 
-from config import SEPARATOR
+from config import (
+    DATA_TRAIN_PROC,
+    DATA_EVAL_PROC,
+    DATA_TEST_PROC,
+    DATA_DOCUMENTS,
+    DATA_DOCUMENTS_AUG,
+    SPLITS,
+    SEPARATOR
+)
 
 
 NUM_PROMPT_FORMATS = 5
 
 
-def _warn_overflow(model_inputs, tokenizer):
-    for model_input in model_inputs:
-        if len(model_input["input_ids"]) >= tokenizer.model_max_length:
-            warnings.warn("input_ids is exceeding the input limit", RuntimeWarning)
+def load_data(use_aug=True, debug=False, debug_size=4):
+    """Load documents and data."""
+    # Process documents for indexing
+    if use_aug:
+        # Augmented documents use pseudo-queries which should use the retrieval task instead
+        document_file = DATA_DOCUMENTS_AUG
+    else:
+        # Traditional documents should use the indexing task
+        document_file = DATA_DOCUMENTS
+        raise NotImplementedError("Indexing is not supported.")
 
-        if "labels" in model_input and len(model_input["labels"]) >= tokenizer.model_max_length:
-            warnings.warn("labels is exceeding the input limit", RuntimeWarning)
+    # Load documents
+    raw_documents_ds = load_dataset("csv", data_files=document_file, split="train")
+
+    # Process data for retrieval (train, valid, test)
+    file_mapping = {
+        "train": DATA_TRAIN_PROC,
+        "eval": DATA_EVAL_PROC,
+        "test": DATA_TEST_PROC,
+    }
+
+    # Process queries for retrieval
+    raw_data_ds = load_dataset("csv", data_files=file_mapping)
+
+    # Reduce data size for all splits
+    if debug:
+        raw_documents_ds = raw_documents_ds.select(range(debug_size))
+
+        for split in SPLITS:
+            raw_data_ds[split] = raw_data_ds[split].select(range(debug_size))
+
+    return raw_documents_ds, raw_data_ds
+
+
+def _warn_overflow(model_input, tokenizer):
+    """Warns if tokens overflow the model input limit."""
+    if len(model_input["input_ids"]) >= tokenizer.model_max_length:
+        warnings.warn("input_ids is exceeding the input limit", RuntimeWarning)
+
+    if "labels" in model_input and len(model_input["labels"]) >= tokenizer.model_max_length:
+        warnings.warn("labels is exceeding the input limit", RuntimeWarning)
 
 
 def tokenize(prompt, target, tokenizer, warn_overflow=False):
@@ -42,7 +85,7 @@ def tokenize(prompt, target, tokenizer, warn_overflow=False):
 
 def _get_randint(low: int, high: int, generator: Generator = None):
     """
-    Returns a random int between low (inclusive) and high (exclusive).\\
+    Returns a random int between `low` (inclusive) and `high` (exclusive).\\
     Will return `low` if no generator is given.
     """
     if generator is None:
@@ -52,19 +95,27 @@ def _get_randint(low: int, high: int, generator: Generator = None):
 
 
 def _get_prompt_format(format_id: int = 0, use_cot: bool = False):
+    """Get a prompt format template."""
     templates = [
-        "Answer the query with a document ID",
-        "Generate the document ID that answers the question",
-        "Based on the question, predict the document ID",
-        "Retrieve a document ID that fits the query",
-        "Using the question, find the document ID"
+        "Answer the query with a document ID.",
+        "Generate the document ID that answers the question.",
+        "Based on the question, predict the document ID.",
+        "Retrieve a document ID that fits the query.",
+        "Using the question, find the document ID."
     ]
     assert len(templates) == NUM_PROMPT_FORMATS, "Templates do not match NUM_PROMPT_FORMATS"
 
+    template = f"{templates[format_id]}"
+
     if use_cot:
-        template = f"{templates[format_id]} by reasoning step-by-step."
-    else:
-        template = f"{templates[format_id]}."
+        cot_templates = [
+            "Use step-by-step reasoning.",
+            "You need to explain your answer.",
+            "Think this through carefully.",
+            "Let's think step-by-step.",
+            "Explain your reasoning before answering.",
+        ]
+        template += " " + cot_templates[format_id]
 
     docid = "Format: company-year-keyword-keyword-keyword-keyword"
     query = "Question: {company}-{year}, {query}"
@@ -72,24 +123,26 @@ def _get_prompt_format(format_id: int = 0, use_cot: bool = False):
     return prompt
 
 
-def _get_answer_format(format_id: int = 0, use_cot: bool = False):
+def _get_answer_format(use_cot: bool = False):
+    """Get an answer format template."""
     if not use_cot:
         return "{docid}"
 
-    # Templates are linked to the prompt templates
-    templates = [
+    answer = (
         "The query is about {company} in {year}. "
         "They are related to {keyword_1} {keyword_2}. "
-        "Company"
-    ]
-    return templates[format_id]
+        "Related documents talk about {keyword_3} {keyword_4}. "
+        "Therefore, the answer is {docid}."
+    )
+    return answer
 
 
 def process_pair(input_text: str, docid: str, format_id: int = 0, use_cot: bool = False):
+    """Process an input text and docid pair."""
     company, year, *keywords = docid.split(SEPARATOR)
 
     prompt_format = _get_prompt_format(format_id, use_cot)
-    answer_format = _get_answer_format(format_id, use_cot)
+    answer_format = _get_answer_format(use_cot)
 
     prompt = prompt_format.format(company=company, year=year, query=input_text)
 
@@ -98,80 +151,36 @@ def process_pair(input_text: str, docid: str, format_id: int = 0, use_cot: bool 
         "company": company,
         "year": year,
     }
-    answer_map.update({f"keyword_{i}": keyword for i, keyword in enumerate(keywords)})
+    answer_map.update({f"keyword_{i}": keyword for i, keyword in enumerate(keywords, 1)})
 
     answer = answer_format.format_map(answer_map)
 
     return prompt, answer
 
 
-def create_examples(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
+def process_example_pairs(pairs: list[tuple[str, str]], format_ids: list[int], use_cot=True):
+    """Create examples using pairs of questions and answers."""
     full_prompt = ""
+    final_answer = ""
+
     for i, ((input_text, docid), format_id) in enumerate(zip(pairs, format_ids, strict=True)):
         prompt, answer = process_pair(input_text, docid, format_id, use_cot)
-        example = prompt + answer
-        full_prompt += example
+
         if i < len(pairs) - 1:
-            full_prompt += "\n"
+            example = prompt + answer + "\n"
+            full_prompt += example
+        else:
+            full_prompt += prompt
+            final_answer = answer
 
-    return full_prompt
-
-
-def get_prompt_format(
-    indexing: bool,
-    use_cot: bool,
-    **kwargs,
-):
-    """Get a prompt format based on the type."""
-    if indexing:
-        raise NotImplementedError()
-
-    if use_cot:
-        pass
-    else:
-        if "format_id" not in kwargs:
-            kwargs["format_id"] = 0
-
-        prompt = _get_prompt_format(kwargs["format_id"])
-
-    return prompt
+    return full_prompt, final_answer
 
 
-def build_process_fn(
-    tokenizer,
-    input_key: str,
-    indexing: bool,
-    use_cot: bool,
-    debug: bool = False,
-    **kwargs,
-):
-    """Creates a process function compatible with Huggingface datasets."""
-    if indexing:
-        raise NotImplementedError("Indexing is not supported.")
-
-    def process_samples(samples):
-        """Process inputs into proper model inputs."""
-        input_texts = samples[input_key]
-        docids = samples["document_id"]
-
-        if isinstance(docids, str):
-            # For singular inputs
-            input_texts = [input_texts]
-            docids = [docids]
-
-        prompts = []
-        answers = []
-        for input_text, docid in zip(input_texts, docids):
-            prompt, answer = process_pair(input_text, docid, use_cot=use_cot, **kwargs)
-            prompts.append(prompt)
-            answers.append(answer)
-
-        if debug:
-            print(f"Prompts: {prompts}\nAnswers: {answers}")
-
-        tokenized = tokenize(prompts, answers, tokenizer)
-        return tokenized
-    return process_samples
+def prepare_samples(samples, input_key):
+    """Get the data from the huggingface dataset."""
+    input_texts = samples[input_key]
+    docids = samples["document_id"]
+    return input_texts, docids
 
 
 class DynamicDataset(Dataset):
@@ -179,23 +188,34 @@ class DynamicDataset(Dataset):
     def __init__(
         self,
         data_ds,
-        documents_ds,
         tokenizer,
-        seed: int,
-        indexing: bool,
-        use_cot: bool,
+        documents_ds=None,
+        format_id: int = 0,  # -1 enables random prompts and examples
+        n_examples: int = 0,
+        seed: int = 42,
+        indexing: bool = False,
+        use_cot: bool = False,
         debug: bool = False,
         epoch: int = 0,
     ):
         self.data_ds = data_ds
-        self.documents_ds = documents_ds
         self.tokenizer = tokenizer
+        self.documents_ds = documents_ds
+        self.format_id = format_id
+        self.n_examples = n_examples
         self.base_seed = seed
         self.indexing = indexing
         self.use_cot = use_cot
         self.debug = debug
         self.epoch = epoch
-        self.total_length = len(self.data_ds) + len(self.documents_ds)
+
+        if documents_ds is None:
+            self.total_length = len(self.data_ds)
+        else:
+            self.total_length = len(self.data_ds) + len(self.documents_ds)
+
+        if self.indexing:
+            raise NotImplementedError("Indexing is not supported.")
 
     def __len__(self):
         return self.total_length
@@ -203,7 +223,16 @@ class DynamicDataset(Dataset):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
-    def __getitem__(self, idx):
+    def get_generator(self, idx: int):
+        """Get a `torch.Generator` using the seed and the iteration."""
+        # Set seed based on iteration
+        # Ensures behaviour is the same as the single-threaded case
+        seed = (self.base_seed + self.epoch * self.total_length + idx) % (2**32)
+        generator = torch.Generator("cpu").manual_seed(seed)
+        return generator
+
+    def get_sample(self, idx: int):
+        """Get a sample from the internal datasets."""
         if idx < len(self.data_ds):
             sample = self.data_ds[idx]
             input_key = "question"
@@ -211,25 +240,58 @@ class DynamicDataset(Dataset):
             sample = self.documents_ds[idx - len(self.data_ds)]
             input_key = "pseudo_query"
 
-        # Set seed based on iteration
-        # Ensures behaviour is the same as the single-threaded case
-        seed = (self.base_seed + self.epoch * self.total_length + idx) % (2**32)
-        generator = torch.Generator("cpu").manual_seed(seed)
+        return sample, input_key
 
-        random_int = _get_randint(0, NUM_PROMPT_FORMATS, generator)
+    def get_format_id(self, idx: int):
+        """Get a (randomized) format id from the iteration."""
+        if self.format_id == -1:
+            # Random format id
+            generator = self.get_generator(idx)
+            prompt_id = _get_randint(0, NUM_PROMPT_FORMATS, generator)
+        else:
+            prompt_id = self.format_id
 
-        process_fn = build_process_fn(
-            self.tokenizer,
-            input_key,
-            self.indexing,
-            self.use_cot,
-            debug=self.debug,
-            format_id=random_int
-        )
-        tokenized = process_fn(sample)
+        return prompt_id
 
-        # Unnest values
-        for key in tokenized.keys():
-            tokenized[key] = tokenized[key][0]
+    def get_examples(self, idx: int):
+        """Get examples for prepending the prompt."""
+        generator = self.get_generator(idx)
+        pairs = []
+        format_ids = []
+
+        for _ in range(self.n_examples):
+            # Get random samples
+            random_idx = _get_randint(0, self.total_length, generator)
+            sample, input_key = self.get_sample(random_idx)
+            format_id = self.get_format_id(random_idx)
+            input_text, docid = prepare_samples(sample, input_key)
+
+            pairs.append((input_text, docid))
+            format_ids.append(format_id)
+
+        return pairs, format_ids
+
+    def __getitem__(self, idx: int):
+        # Get main sample
+        sample, input_key = self.get_sample(idx)
+        main_pair = prepare_samples(sample, input_key)
+        format_id = self.get_format_id(idx)
+
+        # Prepend examples
+        if self.n_examples > 0:
+            pairs, format_ids = self.get_examples(idx)
+            pairs.append(main_pair)
+            format_ids.append(format_id)
+        else:
+            pairs = [main_pair]
+            format_ids = [format_id]
+
+        # Create prompt and answer
+        prompt, answer = process_example_pairs(pairs, format_ids, self.use_cot)
+
+        if self.debug:
+            print(f"Prompt: (\n{prompt}\n) Answer: {answer}")
+
+        tokenized = tokenize(prompt, answer, self.tokenizer, True)
 
         return tokenized

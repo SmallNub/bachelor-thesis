@@ -12,3 +12,5 @@ training_12263893 - finqa_full_base_5 - 5 pseudo, mid log penalty, 0.2 dropout, 
 training_12266640 - finqa_full_base_10 - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-4 lr, 0.5 - 1 reduce lr, CRASHED
 training_12279861 - finqa_full_base_10_fail - incorrect resumption, RESUME
 training_12281174 - finqa_full_base - no deepspeed, RETRY
+training_12296260 - NONE - early crash
+training_12297005 - finqa_full_base_10 - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-5 lr, 0.5 - 1 reduce lr
