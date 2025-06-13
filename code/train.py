@@ -66,6 +66,7 @@ logger.info("Script started...")
 
 # Enable debug to drastically reduce values and log many values
 DEBUG = False
+DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 
 USE_COT = True
@@ -126,7 +127,7 @@ train_data = DynamicDataset(
     seed=SEED,
     indexing=not USE_AUG,
     use_cot=USE_COT,
-    debug=DEBUG,
+    debug=DEBUG_INPUTS,
 )
 
 eval_data = {}
@@ -140,7 +141,7 @@ for split in SPLITS:
         seed=SEED,
         indexing=not USE_AUG,
         use_cot=USE_COT,
-        debug=DEBUG,
+        debug=DEBUG_INPUTS,
     )
 
 
@@ -231,6 +232,7 @@ training_args = Seq2SeqTrainingArguments(
     metric_for_best_model="eval_part_match_accuracy",
     greater_is_better=True,
     predict_with_generate=True,
+    generation_max_length=tokenizer.model_max_length,
     label_names=["labels"],
     label_smoothing_factor=0,  # Keep at 0, use custom loss instead
     # gradient_checkpointing=True,  # Large memory impact
