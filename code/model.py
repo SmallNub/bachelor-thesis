@@ -10,23 +10,24 @@ from transformers import (
 )
 
 from metrics import compute_metrics
+from config import MODELS_DIR
 
 
 # Label smoothing for CrossEntropyLoss
 LABEL_SMOOTHING = 0.05
 
 
-def load_tokenizer(model_name, models_dir):
+def load_tokenizer(model_name):
     """Load the tokenizer."""
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
-        cache_dir=models_dir,
+        cache_dir=MODELS_DIR,
         use_fast=True,
     )
     return tokenizer
 
 
-def load_model(model_name, models_dir, tokenizer, use_cot):
+def load_model(model_name, tokenizer, use_cot):
     """Load the quantized model."""
     # Quantization config
     bnb_config = BitsAndBytesConfig(
@@ -39,7 +40,7 @@ def load_model(model_name, models_dir, tokenizer, use_cot):
     # Load model
     model = WeightedLossT5.from_pretrained(
         model_name,
-        cache_dir=models_dir,
+        cache_dir=MODELS_DIR,
         torch_dtype=torch.bfloat16,  # Incompatible with deepspeed?
         local_files_only=False,  # Change for first time downloads
         low_cpu_mem_usage=True,

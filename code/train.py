@@ -69,7 +69,7 @@ DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 
-USE_COT = True
+USE_COT = False
 
 # Number of examples to use for prompts
 # Can be used with or without CoT
@@ -113,7 +113,7 @@ set_seed(SEED)
 
 # DATA PREPROCESSING
 
-tokenizer = load_tokenizer(MODEL_NAME, MODELS_DIR)
+tokenizer = load_tokenizer(MODEL_NAME)
 
 raw_documents_ds, raw_data_ds = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
 
@@ -147,7 +147,7 @@ for split in SPLITS:
 
 # MODEL SETUP
 
-model = load_model(MODEL_NAME, MODELS_DIR, tokenizer, USE_COT)
+model = load_model(MODEL_NAME, tokenizer, USE_COT)
 
 # Fix for gradient checkpoints
 model.config.use_cache = False
