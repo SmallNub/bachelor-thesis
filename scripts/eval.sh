@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_h100
-#SBATCH --time=1:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=slurm/eval_%j.out
 #SBATCH --error=slurm/eval_%j.err
 #SBATCH --signal=USR1@300
