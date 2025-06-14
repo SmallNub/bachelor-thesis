@@ -15,3 +15,4 @@ training_12281174 - finqa_full_base - no deepspeed, RETRY
 training_12296260 - NONE - early crash
 training_12297005 - finqa_base_10 - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-5 lr, 0.5 - 1 reduce lr, BASELINE
 training_12368701 - finqa_base_10_cot - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-5 lr, 0.5 - 1 reduce lr, COT
+training_12375528 - finqa_base_10_ex - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-5 lr, 0.5 - 1 reduce lr, EXAMPLES

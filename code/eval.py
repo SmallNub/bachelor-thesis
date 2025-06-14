@@ -22,6 +22,8 @@ from config import MODELS_DIR, SPLITS
 
 # NOTE
 # Results are saved in test_eval.ipynb
+# Will use up nearly all the available VRAM on an H100
+# Should complete under 15 mins
 
 # ENVIRONMENT SETUP
 
@@ -49,7 +51,7 @@ N_EXAMPLES = 2
 SEED = 42
 set_seed(SEED)
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_cot")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_ex")
 
 # Detect number of CPUs and GPUs
 num_cpus, num_gpus = detect_resources(logger)
