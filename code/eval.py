@@ -23,7 +23,7 @@ from config import MODELS_DIR, SPLITS
 # NOTE
 # Results are saved in test_eval.ipynb
 # Will use up nearly all the available VRAM on an H100
-# Should complete under 15 mins
+# Should complete under 10 mins
 
 # ENVIRONMENT SETUP
 

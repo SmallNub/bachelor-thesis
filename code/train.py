@@ -38,6 +38,7 @@ from config import (
 
 # NOTE
 # Code is optimized for 1 H100 GPU with this model size
+# Maximum 8 hours, average 3 hours
 # Deepspeed can be enabled, but will behave differently
 # bf16 is used which might not work on some GPUs
 # Data shuffle seems to be different between num_workers=0 and num_workers>0
