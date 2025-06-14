@@ -2,6 +2,7 @@ import os
 import sys
 import psutil
 import pynvml
+import multiprocessing
 import logging
 import random
 import torch
@@ -46,6 +47,17 @@ def enable_tf32():
     torch.backends.cudnn.allow_tf32 = True
 
 
+def detect_resources(logger: logging.Logger):
+    """Detect number of CPUs and GPUs."""
+    num_cpus = int(os.getenv("SLURM_JOB_CPUS_PER_NODE", multiprocessing.cpu_count()))
+    logger.info(f"Using {num_cpus} CPU core(s)")
+
+    num_gpus = torch.cuda.device_count()
+    logger.info(f"Using {num_gpus} CUDA device(s)")
+
+    return num_cpus, num_gpus
+
+
 def set_seed(seed: int):
     """Set the seed for rng for torch, numpy, random."""
     torch.manual_seed(seed)
@@ -54,6 +66,11 @@ def set_seed(seed: int):
 
 
 class ResourceMonitorCallback(TrainerCallback):
+    """
+    Monitors resources used on the system.\\
+    Can be used with trainer and on its own.
+    """
+
     def __init__(self, logger: logging.Logger):
         self.logger = logger
 
@@ -67,6 +84,7 @@ class ResourceMonitorCallback(TrainerCallback):
         pynvml.nvmlShutdown()
 
     def format_gpu_info(self, i):
+        """Get the GPU info and format it into a string"""
         handle = self.handles[i]
         mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
         util = pynvml.nvmlDeviceGetUtilizationRates(handle)
@@ -75,6 +93,7 @@ class ResourceMonitorCallback(TrainerCallback):
         return f"GPU {i}: {used_mb:.2f}/{total_mb:.2f} MB, {util.gpu}% util"
 
     def log_resources(self):
+        """Log the resources used. (RAM, CPU, GPU)"""
         # CPU Memory and usage
         rss = self.process.memory_info().rss / 1024**2  # in MB
         cpu_percent = self.process.cpu_percent(interval=None)  # % of single core

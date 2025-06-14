@@ -2,7 +2,6 @@ import os
 import sys
 import logging
 import traceback
-import multiprocessing
 import json
 import torch
 import torch.distributed as dist
@@ -25,6 +24,7 @@ import bitsandbytes as bnb
 from utils import (
     init_logging,
     enable_tf32,
+    detect_resources,
     set_seed,
     ResourceMonitorCallback,
 )
@@ -102,11 +102,7 @@ TRAINED_DIR = os.path.join(MODELS_DIR, "finqa_base_10")
 #     ds_config = json.load(f)
 
 # Detect number of CPUs and GPUs
-num_cpus = int(os.getenv("SLURM_JOB_CPUS_PER_NODE", multiprocessing.cpu_count()))
-logger.info(f"Using {num_cpus} CPU core(s)")
-
-num_gpus = torch.cuda.device_count()
-logger.info(f"Using {num_gpus} CUDA device(s)")
+num_cpus, num_gpus = detect_resources(logger)
 
 set_seed(SEED)
 
@@ -291,6 +287,8 @@ def perform_metrics(split: str):
 
 if __name__ == "__main__":
     try:
+        logger.info("Training Started")
+
         model.train()
         trainer_results = trainer.train(resume_from_checkpoint=None)
 
