@@ -95,7 +95,7 @@ OUTPUT_DIR = os.path.join(MODELS_DIR, f"finqa_{job_id}")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 # Use an already trained model
-USE_TRAINED = True
+USE_TRAINED = False
 TRAINED_DIR = os.path.join(MODELS_DIR, "finqa_base_10")
 
 # Deepspeed config
