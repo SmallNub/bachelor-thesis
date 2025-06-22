@@ -70,7 +70,7 @@ DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 
-USE_COT = False
+USE_COT = True
 
 # Number of examples to use for prompts
 # Can be used with or without CoT
