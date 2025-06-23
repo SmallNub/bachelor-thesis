@@ -43,7 +43,7 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 
 USE_COT = False
-USE_AUG = True
+USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
 N_EXAMPLES = 2
@@ -51,7 +51,7 @@ N_EXAMPLES = 2
 SEED = 42
 set_seed(SEED)
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_ex")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_no_ex")
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
