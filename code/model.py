@@ -27,7 +27,7 @@ def load_tokenizer(model_name):
     return tokenizer
 
 
-def load_model(model_name, tokenizer, use_cot):
+def load_model(model_name, tokenizer, use_cot, quantization=True):
     """Load the quantized model."""
     # Quantization config
     bnb_config = BitsAndBytesConfig(
@@ -44,7 +44,7 @@ def load_model(model_name, tokenizer, use_cot):
         torch_dtype=torch.bfloat16,  # Incompatible with deepspeed?
         local_files_only=False,  # Change for first time downloads
         low_cpu_mem_usage=True,
-        quantization_config=bnb_config,
+        quantization_config=bnb_config if quantization else None,
         device_map="auto",  # Incompatible with deepspeed
     )
     model.tokenizer = tokenizer

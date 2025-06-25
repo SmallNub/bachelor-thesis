@@ -18,3 +18,8 @@ training_12368701 - finqa_base_10_cot - 10 pseudo, mid log penalty, 0.2 dropout,
 training_12375528 - finqa_base_10_ex - 10 pseudo, mid log penalty, 0.2 dropout, 0.05 label, prompt sampling, 2e-5 lr, 0.5 - 1 reduce lr, EXAMPLES
 training_12559361 - finqa_base_10_no_ex - SAME, NO CHECKPOINT FROM BASELINE, EXAMPLES
 training_12559387 - finqa_base_10_no_cot - SAME, NO CHECKPOINT FROM BASELINE, COT
+
+
+cat slurm/training_12297005.out
+cat slurm/training_12559361.out
+cat slurm/training_12559387.out

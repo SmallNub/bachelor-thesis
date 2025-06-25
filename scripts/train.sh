@@ -11,7 +11,7 @@
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-model_name="finqa_$SLURM_JOBID"
+model_name="finqa_base_$SLURM_JOBID"
 
 copy_to_home() {
     log INFO "Copying results to home directory"

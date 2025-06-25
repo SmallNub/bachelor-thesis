@@ -5,6 +5,7 @@ import traceback
 import json
 import torch
 import torch.distributed as dist
+from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import (
     DataCollatorForSeq2Seq,
@@ -69,16 +70,19 @@ logger.info("Script started...")
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
+QUANTIZATION = False
 
-USE_COT = True
+USE_COT = False
 
 # Number of examples to use for prompts
+# 0 will disable examples
+# High values can reach model input limit
 # Can be used with or without CoT
-N_EXAMPLES = 2
+N_EXAMPLES = 0
 
 # Use only pseudo-queries instead of documents
 # Prompt will be truncated when indexing normally
-# Indexing is no longer supported
+# Indexing is no longer supported, so keep this on
 USE_AUG = True
 
 SEED = 42
@@ -91,7 +95,7 @@ MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
 # This should correspond to the same name inside train.sh
-OUTPUT_DIR = os.path.join(MODELS_DIR, f"finqa_{job_id}")
+OUTPUT_DIR = os.path.join(MODELS_DIR, f"finqa_base_{job_id}")
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 # Use an already trained model
@@ -144,48 +148,52 @@ for split in SPLITS:
 
 # MODEL SETUP
 
-model = load_model(MODEL_NAME, tokenizer, USE_COT)
+model = load_model(MODEL_NAME, tokenizer, USE_COT, QUANTIZATION)
 
 # Fix for gradient checkpoints
 model.config.use_cache = False
 model.enable_input_require_grads()
 
-model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
+if QUANTIZATION:
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
-if USE_TRAINED:
-    model = PeftModel.from_pretrained(model, TRAINED_DIR, is_trainable=True)
-else:
-    # LoRA config (QLoRA + OLoRA)
-    lora_config = LoraConfig(
-        init_lora_weights="olora",
-        task_type=TaskType.SEQ_2_SEQ_LM,
-        inference_mode=False,
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.2,
-        target_modules="all-linear",
+    if USE_TRAINED:
+        model = PeftModel.from_pretrained(model, TRAINED_DIR, is_trainable=True)
+    else:
+        # LoRA config (QLoRA + OLoRA)
+        lora_config = LoraConfig(
+            init_lora_weights="olora",
+            task_type=TaskType.SEQ_2_SEQ_LM,
+            inference_mode=False,
+            r=16,
+            lora_alpha=32,
+            lora_dropout=0.2,
+            target_modules="all-linear",
+        )
+        model = get_peft_model(model, lora_config)
+
+    # Print model statistics
+    # Code from model.print_trainable_parameters()
+    trainable_params, all_param = model.get_nb_trainable_parameters()
+
+    logger.info(
+        f"trainable params: {trainable_params:,d} || "
+        f"all params: {all_param:,d} || "
+        f"trainable%: {100 * trainable_params / all_param:.4f}"
     )
-    model = get_peft_model(model, lora_config)
-
-# Print model statistics
-# Code from model.print_trainable_parameters()
-trainable_params, all_param = model.get_nb_trainable_parameters()
-
-logger.info(
-    f"trainable params: {trainable_params:,d} || "
-    f"all params: {all_param:,d} || "
-    f"trainable%: {100 * trainable_params / all_param:.4f}"
-)
 
 logger.info(f"Memory footprint: {model.get_memory_footprint():,}")
 
-# Specialized LoRA optimizer
-optimizer = create_loraplus_optimizer(
-    model=model,
-    optimizer_cls=bnb.optim.AdamW8bit,
-    lr=LEARNING_RATE,
-    loraplus_lr_ratio=16,
-)
+if QUANTIZATION:
+    # Specialized LoRA optimizer
+    optimizer = create_loraplus_optimizer(
+        model=model,
+        optimizer_cls=bnb.optim.AdamW8bit,
+        lr=LEARNING_RATE,
+        loraplus_lr_ratio=16,
+    )
+else:
+    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
 
 # Learning rate scheduler
 scheduler = ReduceLROnPlateau(

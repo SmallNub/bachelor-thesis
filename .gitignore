@@ -6,6 +6,7 @@ models/
 dataset/
 data/
 logs/
+figures/
 .vscode
 
 # Byte-compiled / optimized / DLL files
