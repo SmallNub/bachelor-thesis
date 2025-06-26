@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import DataCollatorForSeq2Seq
-from peft import PeftModel, PeftConfig
+from peft import PeftModel
 
 from utils import (
     enable_tf32,
@@ -41,6 +41,7 @@ resource_monitor = ResourceMonitorCallback(logger)
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4
+USE_LORA = False
 
 USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
@@ -51,6 +52,9 @@ N_EXAMPLES = 0
 SEED = 42
 set_seed(SEED)
 
+MODEL_NAME = "google/flan-t5-base"
+logger.info(f"Using model: {MODEL_NAME}")
+
 SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full")
 logger.info(f"Input location: {SAVE_DIR}")
 
@@ -58,17 +62,14 @@ logger.info(f"Input location: {SAVE_DIR}")
 num_cpus, num_gpus = detect_resources(logger)
 
 # Load trained model
+tokenizer = load_tokenizer(MODEL_NAME)
+model = load_model(MODEL_NAME, tokenizer, USE_COT)
 
-peft_config = PeftConfig.from_pretrained(SAVE_DIR)
-model_name = peft_config.base_model_name_or_path
+if USE_LORA:
+    model = PeftModel.from_pretrained(model, SAVE_DIR)
 
-tokenizer = load_tokenizer(model_name)
-model = load_model(model_name, tokenizer, USE_COT)
-
-model = PeftModel.from_pretrained(model, SAVE_DIR)
-
-# Merge LoRA into model for decreased latency
-model.merge_and_unload()
+    # Merge LoRA into model for decreased latency
+    model.merge_and_unload()
 
 # Prepare data
 _, data = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
