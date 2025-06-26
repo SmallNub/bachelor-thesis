@@ -70,7 +70,7 @@ logger.info("Script started...")
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
-QUANTIZATION = True
+QUANTIZATION = False
 
 USE_COT = False
 
@@ -78,7 +78,7 @@ USE_COT = False
 # 0 will disable examples
 # High values can reach model input limit
 # Can be used with or without CoT
-N_EXAMPLES = 0
+N_EXAMPLES = 2
 
 # Use only pseudo-queries instead of documents
 # Prompt will be truncated when indexing normally
@@ -88,7 +88,7 @@ USE_AUG = True
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 32
 ACCUMULATION_STEPS = 1 if DEBUG else 1
-LEARNING_RATE = 2e-5
+LEARNING_RATE = 2e-4
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
