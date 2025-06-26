@@ -43,7 +43,7 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 USE_LORA = False
 
-USE_COT = False
+USE_COT = True
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
@@ -55,7 +55,7 @@ set_seed(SEED)
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full_ex")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full_cot")
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
