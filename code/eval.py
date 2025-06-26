@@ -46,7 +46,7 @@ USE_LORA = False
 USE_COT = True
 USE_AUG = True  # Ignored, but should still be True
 
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 N_EXAMPLES = 2
 
 SEED = 42
