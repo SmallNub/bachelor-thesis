@@ -51,7 +51,7 @@ N_EXAMPLES = 0
 SEED = 42
 set_seed(SEED)
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_2")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full")
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
@@ -66,6 +66,9 @@ tokenizer = load_tokenizer(model_name)
 model = load_model(model_name, tokenizer, USE_COT)
 
 model = PeftModel.from_pretrained(model, SAVE_DIR)
+
+# Merge LoRA into model for decreased latency
+model.merge_and_unload()
 
 # Prepare data
 _, data = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
