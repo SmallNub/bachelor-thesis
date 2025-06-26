@@ -21,7 +21,7 @@ training_12559387 - finqa_base_10_no_cot - SAME, NO CHECKPOINT FROM BASELINE, CO
 training_12632629 - finqa_base_10_full - SAME, BASELINE, NO LORA
 training_12632676 - finqa_base_10_2 - SAME, BASELINE
 training_12632683 - finqa_base_10_full_ex - SAME, BASELINE, NO LORA, EXAMPLES
-training_12632683 - finqa_base_10_full_cot - SAME, BASELINE, NO LORA, COT
+training_12632694 - finqa_base_10_full_cot - SAME, BASELINE, NO LORA, COT
 
 
 cat slurm/training_12297005.out
