@@ -70,7 +70,7 @@ logger.info("Script started...")
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
-QUANTIZATION = False
+QUANTIZATION = True
 
 USE_COT = False
 
@@ -88,7 +88,7 @@ USE_AUG = True
 SEED = 42
 BATCH_SIZE = min(4, DEBUG_SIZE) if DEBUG else 32
 ACCUMULATION_STEPS = 1 if DEBUG else 1
-LEARNING_RATE = 2e-4
+LEARNING_RATE = 2e-5
 EPOCHS = 100
 
 MODEL_NAME = "google/flan-t5-base"
