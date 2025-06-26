@@ -70,7 +70,7 @@ logger.info("Script started...")
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
-QUANTIZATION = False
+QUANTIZATION = True
 
 USE_COT = True
 

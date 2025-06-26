@@ -43,11 +43,11 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 USE_LORA = False
 
-USE_COT = True
+USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 128
-N_EXAMPLES = 2
+N_EXAMPLES = 0
 
 SEED = 42
 set_seed(SEED)
@@ -55,7 +55,7 @@ set_seed(SEED)
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full_cot")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full")
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
@@ -63,13 +63,15 @@ num_cpus, num_gpus = detect_resources(logger)
 
 # Load trained model
 tokenizer = load_tokenizer(MODEL_NAME)
-model = load_model(MODEL_NAME, tokenizer, USE_COT)
 
 if USE_LORA:
+    model = load_model(MODEL_NAME, tokenizer, USE_COT)
     model = PeftModel.from_pretrained(model, SAVE_DIR)
 
     # Merge LoRA into model for decreased latency
     model.merge_and_unload()
+else:
+    model = load_model(SAVE_DIR, tokenizer, USE_COT)
 
 # Prepare data
 _, data = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
