@@ -41,12 +41,12 @@ resource_monitor = ResourceMonitorCallback(logger)
 DEBUG = False
 DEBUG_INPUTS = False
 DEBUG_SIZE = 4
-USE_LORA = False
+USE_LORA = True
 
 USE_COT = True
 USE_AUG = True  # Ignored, but should still be True
 
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 N_EXAMPLES = 2
 
 SEED = 42
@@ -55,7 +55,7 @@ set_seed(SEED)
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_full_cot")
+SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_no_cot")
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
