@@ -24,7 +24,7 @@ training_12632683 - finqa_base_10_full_ex - SAME, BASELINE, NO LORA, EXAMPLES
 training_12632694 - finqa_base_10_full_cot - SAME, BASELINE, NO LORA, COT
 
 training_17848603 - reasongr_zero - improved regex
-training_17848603 - reasongr_few - improved regex
+training_17848643 - reasongr_few - improved regex
 training_17848603 - reasongr_cot - improved regex
 
 cat slurm/training_12297005.out

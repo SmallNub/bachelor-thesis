@@ -67,7 +67,7 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 QUANTIZATION = True
 
-USE_COT = False
+USE_COT = True
 
 # Number of examples to use for prompts
 # 0 will disable examples
