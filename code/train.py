@@ -73,7 +73,7 @@ USE_COT = False
 # 0 will disable examples
 # High values can reach model input limit
 # Can be used with or without CoT
-N_EXAMPLES = 0
+N_EXAMPLES = 2
 
 # Use only pseudo-queries instead of documents
 # Prompt will be truncated when indexing normally
