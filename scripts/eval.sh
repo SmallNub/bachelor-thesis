@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=eval_finqa_full
+#SBATCH --job-name=eval_reasongr
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1

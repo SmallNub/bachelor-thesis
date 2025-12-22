@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=train_finqa_full
+#SBATCH --job-name=train_reasongr
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=1
@@ -11,7 +11,8 @@
 
 source $HOME/bachelor-thesis/scripts/init_job.sh
 
-model_name="finqa_base_$SLURM_JOBID"
+# Update accordingly
+model_name="reasongr_$SLURM_JOBID"
 
 copy_to_home() {
     log INFO "Copying results to home directory"

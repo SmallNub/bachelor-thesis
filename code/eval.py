@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import torch
+import pandas as pd
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import DataCollatorForSeq2Seq
@@ -14,14 +15,13 @@ from utils import (
     set_seed,
     ResourceMonitorCallback
 )
-from metrics import compute_metrics
-from process_data import load_data, DynamicDataset
-from model import load_tokenizer, load_model
-from config import MODELS_DIR, SPLITS
+from metrics import compute_metrics, extract_docid, compute_ir_metrics
+from process_data import load_data, DynamicDataset, DocidTrie, get_prefix_allowed_tokens_fn
+from model import load_tokenizer, load_model, WeightedLossT5
+from config import MODELS_DIR, SPLITS, DATA_DOCUMENTS_AUG
 
 
 # NOTE
-# Results are saved in test_eval.ipynb
 # Will use up nearly all the available VRAM on an H100
 # Should complete under 10 mins
 
@@ -43,19 +43,24 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 USE_LORA = True
 
-USE_COT = True
+USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
-N_EXAMPLES = 2
+N_EXAMPLES = 0
+
+NUM_BEAMS = 10
+NUM_RETURN_SEQUENCES = 10
+USE_CONSTRAINTS = False  # Makes little difference and worse on hits@10
 
 SEED = 42
 set_seed(SEED)
 
+CHECKPOINT_NAME = "reasongr_base"
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
-SAVE_DIR = os.path.join(MODELS_DIR, "finqa_base_10_no_cot")
+SAVE_DIR = os.path.join(MODELS_DIR, CHECKPOINT_NAME)
 logger.info(f"Input location: {SAVE_DIR}")
 
 # Detect number of CPUs and GPUs
@@ -76,6 +81,8 @@ else:
 # Prepare data
 _, data = load_data(USE_AUG, DEBUG, DEBUG_SIZE)
 
+documents = pd.read_csv(DATA_DOCUMENTS_AUG)
+
 eval_data = {}
 for split in SPLITS:
     eval_data[split] = DynamicDataset(
@@ -93,7 +100,7 @@ for split in SPLITS:
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
 
-def evaluate_model(model, dataset):
+def evaluate_model(model: WeightedLossT5, dataset):
     """Evaluate the model with a dataset."""
     model.eval()
     dataloader = DataLoader(
@@ -107,6 +114,10 @@ def evaluate_model(model, dataset):
         pin_memory=False if DEBUG else True,
     )
 
+    # Initialize Trie with your corpus docids
+    all_docids = documents["document_id"].unique().tolist()
+    trie_manager = DocidTrie(all_docids, tokenizer)
+
     all_preds = []
     all_labels = []
 
@@ -116,6 +127,8 @@ def evaluate_model(model, dataset):
         attention_mask = batch["attention_mask"].to(model.device)
         labels = batch["labels"].to(model.device)
 
+        constraints_fn = get_prefix_allowed_tokens_fn(tokenizer, trie_manager) if USE_CONSTRAINTS else None
+
         # Get predictions
         with torch.no_grad():
             generated_ids = model.generate(
@@ -123,19 +136,43 @@ def evaluate_model(model, dataset):
                 attention_mask=attention_mask,
                 labels=labels,
                 max_new_tokens=tokenizer.model_max_length,
-                num_beams=10,
+                num_beams=NUM_BEAMS,
+                num_return_sequences=NUM_RETURN_SEQUENCES,
+                prefix_allowed_tokens_fn=constraints_fn,
                 early_stopping=True,
             )
 
         # Decode tokens
-        decoded_preds = model.base_model.decode_tokens(generated_ids.detach().cpu().numpy())
-        decoded_labels = model.base_model.decode_tokens(labels.detach().cpu().numpy())
+        decoded_preds = model.decode_tokens(generated_ids.detach().cpu().numpy())
+        decoded_labels = model.decode_tokens(labels.detach().cpu().numpy())
 
-        all_preds.extend(decoded_preds)
+        # Reshape to (batch_size, 10, seq_len)
+        decoded_outputs = []
+        for i in range(input_ids.shape[0]):
+            decoded_outputs.append(decoded_preds[i * NUM_RETURN_SEQUENCES:(i + 1) * NUM_RETURN_SEQUENCES])
+
+        all_preds.extend(decoded_outputs)
         all_labels.extend(decoded_labels)
 
-    metrics, _ = compute_metrics(all_preds, all_labels, USE_COT)
+    # Only use the top 1 prediction
+    metrics, _ = compute_metrics([ranking[0] for ranking in all_preds], all_labels, USE_COT)
 
+    # Extract docids for IR metrics
+    all_preds_docids = []
+    for ranking in all_preds:
+        ranking_docids = []
+        for pred in ranking:
+            docid = extract_docid(pred, use_cot=USE_COT, is_label=False)
+            ranking_docids.append(docid if docid is not None else "__NULL__")
+        all_preds_docids.append(ranking_docids)
+
+    all_label_docids = [
+        extract_docid(label, use_cot=USE_COT, is_label=True)
+        for label in all_labels
+    ]
+
+    ir_metrics = compute_ir_metrics(all_preds_docids, all_label_docids)
+    metrics.update(ir_metrics)
     return metrics
 
 

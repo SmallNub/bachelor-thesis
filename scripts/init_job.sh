@@ -2,7 +2,6 @@
 
 start_time=$(date +%s)
 
-# Set this at the top of your script or configure it as needed
 LOG_FILE="$HOME/bachelor-thesis/logs/bash_$SLURM_JOBID.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 touch "$LOG_FILE"

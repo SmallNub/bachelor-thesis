@@ -40,14 +40,9 @@ from config import (
 # NOTE
 # Code is optimized for 1 H100 GPU with this model size
 # Maximum 8 hours, average 3 hours
-# Deepspeed can be enabled, but will behave differently
 # bf16 is used which might not work on some GPUs
 # Data shuffle seems to be different between num_workers=0 and num_workers>0
-# Might not be reproducible?
 # torch.compile is incompatible
-
-# TODO
-# Fix CoT
 
 
 # ENVIRONMENT SETUP
@@ -72,13 +67,13 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4  # Using sampling will behave differently (doubled size)
 QUANTIZATION = True
 
-USE_COT = True
+USE_COT = False
 
 # Number of examples to use for prompts
 # 0 will disable examples
 # High values can reach model input limit
 # Can be used with or without CoT
-N_EXAMPLES = 2
+N_EXAMPLES = 0
 
 # Use only pseudo-queries instead of documents
 # Prompt will be truncated when indexing normally
@@ -91,20 +86,18 @@ ACCUMULATION_STEPS = 1 if DEBUG else 1
 LEARNING_RATE = 2e-5
 EPOCHS = 100
 
+CHECKPOINT_NAME = f"reasongr_{job_id}"
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
 # This should correspond to the same name inside train.sh
-OUTPUT_DIR = os.path.join(MODELS_DIR, f"finqa_base_{job_id}")
+OUTPUT_DIR = os.path.join(MODELS_DIR, CHECKPOINT_NAME)
 logger.info(f"Output location: {OUTPUT_DIR}")
 
 # Use an already trained model
 USE_TRAINED = False
-TRAINED_DIR = os.path.join(MODELS_DIR, "finqa_base_10")
-
-# Deepspeed config
-# with open("code/ds_config.json", "r", encoding="utf-8") as f:
-#     ds_config = json.load(f)
+TRAINED_NAME = "reasongr"
+TRAINED_DIR = os.path.join(MODELS_DIR, TRAINED_NAME)
 
 # Detect number of CPUs and GPUs
 num_cpus, num_gpus = detect_resources(logger)
@@ -225,7 +218,6 @@ training_args = Seq2SeqTrainingArguments(
     bf16=True,
     tf32=True,
     torch_empty_cache_steps=100,  # Prevent growing memory usage
-    # deepspeed=ds_config,  # Disabled deepspeed
     report_to="tensorboard",
     logging_strategy="epoch",
     save_strategy="epoch",

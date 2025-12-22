@@ -1,4 +1,5 @@
 import re
+import string
 import numpy as np
 
 from config import SEPARATOR, DOCID_SIZE
@@ -48,17 +49,27 @@ MAXIMUM_COMBINED_PENALTY = (
 PENALTY_MISSING = 1.0
 
 
+# NOTE: regex is not robust
 # Depends on CoT pattern
-cot_pattern = re.compile(r"answer is ([A-z0-9\-]+)\.")
+# 1. Look for anchor keywords: answer, answers, reply, replies
+# 2. Look for flexible verbs: forms of "to be" and "to have"
+# 3. Capture the docid: [a-zA-Z0-9\-]+
+cot_pattern = re.compile(
+    r"(?:answer|answers|reply|replies)\s+(?:be|being|am|is|are|was|were|having|have|has|had)\s+(\S+)",
+    re.IGNORECASE
+)
 
 
 def extract_docid(text: str, use_cot=False, is_label=False) -> str | None:
     """Attempts to extract the docid from the text. The resulting docid can be incorrect."""
-    # If no separator is found, the text likely does not contain a docid
+    # If no separator is found, the text does not contain a parsable docid
     if SEPARATOR not in text:
         if is_label:
             raise ValueError("Document id not found in label")
         return None
+
+    # Clean up special tokens
+    text = text.replace("</s>", "").replace("<pad>", "").strip()
 
     # Without CoT, the text should correspond immediately to the docid
     if not use_cot:
@@ -68,13 +79,14 @@ def extract_docid(text: str, use_cot=False, is_label=False) -> str | None:
     match = cot_pattern.search(text)
     if match:
         extracted_docid = match.group(1)
-        return extracted_docid.strip()
+        return extracted_docid.strip(string.punctuation)
 
     if is_label:
         raise ValueError("Document id not found in label")
 
-    # Failed to match the CoT pattern
-    return None
+    # Failed to match the CoT pattern, use fallback: last word
+    words = text.split()
+    return words[-1].strip(string.punctuation) if words else None
 
 
 def deconstruct_docid(docid: str) -> list[str]:
@@ -204,3 +216,57 @@ def compute_metrics(
     metrics = {k: v / len(preds) for k, v in metrics.items()}
 
     return metrics, penalties
+
+
+def calculate_mrr(target, predictions):
+    """Mean Reciprocal Rank: 1/rank of the first correct match."""
+    for i, p in enumerate(predictions):
+        if p == target:
+            return 1.0 / (i + 1)
+    return 0.0
+
+
+def calculate_ndcg(target, predictions):
+    """
+    Normalized Discounted Cumulative Gain.
+    Since there is only 1 correct target in retrieval tasks,
+    IDCG is always 1.0 (perfect ranking puts the item at index 0).
+    """
+    for i, p in enumerate(predictions):
+        if p == target:
+            # log2(i + 2) because rank is i+1, and formula is log2(rank + 1)
+            return 1.0 / np.log2(i + 2)
+    return 0.0
+
+
+def compute_ir_metrics(all_top_k_preds, all_labels):
+    """
+    Computes standard IR metrics: Hits@1, Hits@10, MRR, NDCG@10.
+    """
+    mrr_scores = []
+    ndcg_scores = []
+    hits_at_1 = 0
+    hits_at_10 = 0
+
+    total = len(all_labels)
+
+    for target, preds in zip(all_labels, all_top_k_preds):
+        # Metrics are defined for top 10
+        preds = preds[:10]
+
+        # Hits@k
+        if target in preds[:1]:
+            hits_at_1 += 1
+        if target in preds:
+            hits_at_10 += 1
+
+        # Ranking Metrics
+        mrr_scores.append(calculate_mrr(target, preds))
+        ndcg_scores.append(calculate_ndcg(target, preds))
+
+    return {
+        "hits@1": hits_at_1 / total,
+        "hits@10": hits_at_10 / total,
+        "mrr": float(np.mean(mrr_scores)),
+        "ndcg@10": float(np.mean(ndcg_scores)),
+    }

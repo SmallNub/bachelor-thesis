@@ -16,6 +16,8 @@ from config import (
 
 
 NUM_PROMPT_FORMATS = 5
+CONSTRAINTS_ANCHOR_STARTS = " answer answers reply replies"
+CONSTRAINTS_ANCHOR_VERBS = " be being am is are was were having have has had"
 
 
 def load_data(use_aug=True, debug=False, debug_size=4):
@@ -132,7 +134,7 @@ def _get_answer_format(use_cot: bool = False):
         "The query is about {company} in {year}. "
         "They are related to {keyword_1} {keyword_2}. "
         "Related documents talk about {keyword_3} {keyword_4}. "
-        "Therefore, the answer is {docid}."
+        "Therefore, the answer is {docid}"
     )
     return answer
 
@@ -295,3 +297,76 @@ class DynamicDataset(Dataset):
         tokenized = tokenize(prompt, answer, self.tokenizer, True)
 
         return tokenized
+
+
+class DocidTrie:
+    def __init__(self, docids, tokenizer):
+        self.trie = {}
+        self.tokenizer = tokenizer
+        for docid in docids:
+            # Add both variations to the trie
+            variants = [f" {docid}", docid]
+            for variant in variants:
+                tokens = tokenizer.encode(variant, add_special_tokens=False)
+                node = self.trie
+                for token in tokens:
+                    if token not in node:
+                        node[token] = {}
+                    node = node[token]
+                # Allow EOS at the end of every path
+                node[tokenizer.eos_token_id] = {}
+
+    def get_allowed_tokens(self, current_token_ids):
+        node = self.trie
+        for token in current_token_ids:
+            # If we already hit an EOS, stay in EOS/Pad loop
+            if token == self.tokenizer.eos_token_id or token == self.tokenizer.pad_token_id:
+                return [self.tokenizer.eos_token_id]
+
+            node = node.get(token)
+            if node is None:
+                # Path is broken, fallback to allowing all tokens
+                return list(range(self.tokenizer.vocab_size))
+
+        return list(node.keys())
+
+
+def get_prefix_allowed_tokens_fn(tokenizer, trie_manager):
+    # Pre-encoded anchor sets
+    anchor_starts = set(tokenizer.encode(CONSTRAINTS_ANCHOR_STARTS, add_special_tokens=False))
+    verbs = set(tokenizer.encode(CONSTRAINTS_ANCHOR_VERBS, add_special_tokens=False))
+
+    # Persistent state: maps batch_id -> trigger_position
+    # Initialized with -1 (not yet found)
+    batch_state = {}
+
+    def prefix_allowed_tokens_fn(batch_id, sent):
+        sent_list = sent.tolist()
+
+        # Check if already found the trigger
+        trigger_pos = batch_state.get(batch_id, -1)
+
+        # If not found, only check the most recent 2 tokens
+        if trigger_pos == -1 and len(sent_list) >= 2:
+            # Check the last 4 tokens for a combination of Anchor + Verb
+            recent = sent_list[-4:]
+            has_anchor = any(t in anchor_starts for t in recent)
+            has_verb = any(t in verbs for t in recent)
+
+            if has_anchor and has_verb:
+                print("trigger")
+                batch_state[batch_id] = len(sent_list)
+
+        if trigger_pos == -1:
+            # Still in Reasoning mode
+            return list(range(tokenizer.vocab_size))
+
+        # Constrained Mode (Trie Lookup)
+        # Only pass the tokens generated after the trigger_pos
+        docid_prefix_tokens = sent_list[trigger_pos:]
+        allowed = trie_manager.get_allowed_tokens(docid_prefix_tokens)
+
+        # Return Trie keys, or EOS if the docid is complete
+        return allowed if allowed else [tokenizer.eos_token_id]
+
+    return prefix_allowed_tokens_fn
