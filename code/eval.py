@@ -43,7 +43,7 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 USE_LORA = True
 
-USE_COT = True
+USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
@@ -127,7 +127,11 @@ def evaluate_model(model: WeightedLossT5, dataset):
         attention_mask = batch["attention_mask"].to(model.device)
         labels = batch["labels"].to(model.device)
 
-        constraints_fn = get_prefix_allowed_tokens_fn(tokenizer, trie_manager) if USE_CONSTRAINTS else None
+        constraints_fn = get_prefix_allowed_tokens_fn(
+            tokenizer,
+            trie_manager,
+            use_cot=USE_COT
+        ) if USE_CONSTRAINTS else None
 
         # Get predictions
         with torch.no_grad():
