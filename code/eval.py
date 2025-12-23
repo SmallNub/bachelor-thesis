@@ -43,7 +43,7 @@ DEBUG_INPUTS = False
 DEBUG_SIZE = 4
 USE_LORA = True
 
-USE_COT = False
+USE_COT = True
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
@@ -56,7 +56,7 @@ USE_CONSTRAINTS = False  # Makes little difference and worse on hits@10
 SEED = 42
 set_seed(SEED)
 
-CHECKPOINT_NAME = "reasongr_few"
+CHECKPOINT_NAME = "reasongr_cot"
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 

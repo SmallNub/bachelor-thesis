@@ -27,6 +27,6 @@ training_17848603 - reasongr_zero - improved regex
 training_17848643 - reasongr_few - improved regex
 training_17848730 - reasongr_cot - improved regex
 
-cat slurm/training_12297005.out
-cat slurm/training_12559361.out
-cat slurm/training_12559387.out
+eval_17854653 - reasongr_zero
+eval_17854664 - reasongr_few
+eval_17854653 - reasongr_cot
