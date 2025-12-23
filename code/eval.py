@@ -56,7 +56,7 @@ USE_CONSTRAINTS = False  # Makes little difference and worse on hits@10
 SEED = 42
 set_seed(SEED)
 
-CHECKPOINT_NAME = "reasongr_base"
+CHECKPOINT_NAME = "reasongr_zero"
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
