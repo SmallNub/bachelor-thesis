@@ -331,7 +331,7 @@ class DocidTrie:
         return list(node.keys())
 
 
-def get_prefix_allowed_tokens_fn(tokenizer, trie_manager):
+def get_prefix_allowed_tokens_fn(tokenizer, trie_manager, use_cot=True):
     # Pre-encoded anchor sets
     anchor_starts = set(tokenizer.encode(CONSTRAINTS_ANCHOR_STARTS, add_special_tokens=False))
     verbs = set(tokenizer.encode(CONSTRAINTS_ANCHOR_VERBS, add_special_tokens=False))
@@ -343,23 +343,25 @@ def get_prefix_allowed_tokens_fn(tokenizer, trie_manager):
     def prefix_allowed_tokens_fn(batch_id, sent):
         sent_list = sent.tolist()
 
-        # Check if already found the trigger
-        trigger_pos = batch_state.get(batch_id, -1)
+        # Only check for trigger in CoT mode
+        if use_cot:
+            # Check if already found the trigger
+            trigger_pos = batch_state.get(batch_id, -1)
 
-        # If not found, only check the most recent 2 tokens
-        if trigger_pos == -1 and len(sent_list) >= 2:
-            # Check the last 4 tokens for a combination of Anchor + Verb
-            recent = sent_list[-4:]
-            has_anchor = any(t in anchor_starts for t in recent)
-            has_verb = any(t in verbs for t in recent)
+            # If not found, only check the most recent 2 tokens
+            if trigger_pos == -1 and len(sent_list) >= 2:
+                # Check the last 4 tokens for a combination of Anchor + Verb
+                recent = sent_list[-4:]
+                has_anchor = any(t in anchor_starts for t in recent)
+                has_verb = any(t in verbs for t in recent)
 
-            if has_anchor and has_verb:
-                print("trigger")
-                batch_state[batch_id] = len(sent_list)
+                if has_anchor and has_verb:
+                    print("trigger")
+                    batch_state[batch_id] = len(sent_list)
 
-        if trigger_pos == -1:
-            # Still in Reasoning mode
-            return list(range(tokenizer.vocab_size))
+            if trigger_pos == -1:
+                # Still in Reasoning mode
+                return list(range(tokenizer.vocab_size))
 
         # Constrained Mode (Trie Lookup)
         # Only pass the tokens generated after the trigger_pos

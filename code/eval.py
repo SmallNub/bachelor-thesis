@@ -51,7 +51,7 @@ N_EXAMPLES = 2
 
 NUM_BEAMS = 10
 NUM_RETURN_SEQUENCES = 10
-USE_CONSTRAINTS = False  # Makes little difference and worse on hits@10
+USE_CONSTRAINTS = True
 
 SEED = 42
 set_seed(SEED)
