@@ -51,7 +51,7 @@ N_EXAMPLES = 2
 
 NUM_BEAMS = 10
 NUM_RETURN_SEQUENCES = 10
-USE_CONSTRAINTS = True  # Broken
+USE_CONSTRAINTS = False  # Does not work correctly / worse results / slower
 
 SEED = 42
 set_seed(SEED)
