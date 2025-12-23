@@ -356,14 +356,13 @@ def get_prefix_allowed_tokens_fn(tokenizer, trie_manager, use_cot=True):
                 has_verb = any(t in verbs for t in recent)
 
                 if has_anchor and has_verb:
-                    print("trigger")
                     batch_state[batch_id] = len(sent_list)
 
             if trigger_pos == -1:
                 # Still in Reasoning mode
                 return list(range(tokenizer.vocab_size))
         else:
-            trigger_pos = 0  # Always allow constraints from the start in non-CoT mode
+            trigger_pos = 1  # Skip the BoS token
 
         # Constrained Mode (Trie Lookup)
         # Only pass the tokens generated after the trigger_pos
