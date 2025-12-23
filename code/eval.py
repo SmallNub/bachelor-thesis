@@ -47,7 +47,7 @@ USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
-N_EXAMPLES = 2
+N_EXAMPLES = 0
 
 NUM_BEAMS = 10
 NUM_RETURN_SEQUENCES = 10
