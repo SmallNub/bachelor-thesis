@@ -47,7 +47,7 @@ USE_COT = False
 USE_AUG = True  # Ignored, but should still be True
 
 BATCH_SIZE = 256
-N_EXAMPLES = 0
+N_EXAMPLES = 2
 
 NUM_BEAMS = 10
 NUM_RETURN_SEQUENCES = 10
@@ -56,7 +56,7 @@ USE_CONSTRAINTS = True
 SEED = 42
 set_seed(SEED)
 
-CHECKPOINT_NAME = "reasongr_cot"
+CHECKPOINT_NAME = "reasongr_few"
 MODEL_NAME = "google/flan-t5-base"
 logger.info(f"Using model: {MODEL_NAME}")
 
