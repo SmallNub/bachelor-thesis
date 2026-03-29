@@ -1,25 +1,30 @@
-# The Integration of Chain-of-Thought in Generative Information Retrieval
+# Multi-Step Semantic Reasoning in Generative Retrieval
 
-This repository hosts the source code used by the bachelor thesis: "The Integration of Chain-of-Thought in Generative Information Retrieval".
+This repository hosts the source code used by the conference paper and the bachelor thesis.
+
+The original title of the bachelor thesis: "The Integration of Chain-of-Thought in Generative Information Retrieval".
+
+The new title of the conference paper (ECIR2026): "Multi-Step Semantic Reasoning in Generative Retrieval".
 
 ## Abstract
 
-Traditional information retrieval (IR) systems follow a multi-stage "index-retrieve-rerank" pipeline, which is storage-intensive, lacks end-to-end optimization, and scales poorly with large corpora. Generative retrieval (GR) offers an alternative by encoding the corpus into model parameters and generating document identifiers directly, but existing GR models lack robust reasoning capabilities.
-This research investigates whether incorporating Chain-of-Thought (CoT) prompting can enhance the reasoning capabilities of GR models. A FLAN-T5 model is adapted to retrieve document identifiers for complex queries, with CoT prompting applied during training and inference.
-Additionally, a custom loss function is created to enhance the training of CoT-based models.
-Furthermore, parameter-efficient methods are explored to reduce training costs.
-Experiments conducted on the FinQA dataset, which contains multi-hop financial reasoning questions, demonstrate that models with CoT prompting outperform baselines in both retrieval accuracy and structured answer consistency.
-These findings suggest that reasoning-enhanced prompting can meaningfully improve the ability to handle complex queries for GR models.
+Generative retrieval (GR) models encode a corpus within model parameters and generate relevant document identifiers directly for a given query. While this paradigm shows promise in retrieval tasks, existing GR models struggle with complex queries in numerical contexts, such as those involving semantic reasoning over financial reports, due to limited reasoning capabilities. This limitation leads to suboptimal retrieval accuracy and hinders practical applicability.
+We propose ReasonGR, a framework designed to enhance multi-step semantic reasoning in numerical contexts within GR. ReasonGR employs a structured prompting strategy combining task-specific instructions with stepwise reasoning guidance to better address complex retrieval queries. Additionally, it integrates a reasoning-focused adaptation module to improve the learning of reasoning-related parameters.
+Experiments on the FinQA dataset, which contains financial queries over complex documents, demonstrate that ReasonGR improves retrieval accuracy and consistency, indicating its potential for advancing GR models in reasoning-intensive retrieval scenarios.
 
-For more information, see the published paper.
+For more information, see the published paper in the official proceedings of ECIR2026 (48th European Conference on Information Retrieval).
+
+The conference paper: [https://link.springer.com/chapter/10.1007/978-3-032-21300-6_17](https://link.springer.com/chapter/10.1007/978-3-032-21300-6_17)
+
+The preprint version: [https://arxiv.org/abs/2603.12368](https://arxiv.org/abs/2603.12368)
+
+The bachelor thesis: [https://scripties.uba.uva.nl/search?id=record_56556](https://scripties.uba.uva.nl/search?id=record_56556)
 
 If there are any questions, feel free to open an issue.
 
 ## Requirements
 
-- Sufficient python knowledge
-- CUDA Hardware that can handle TF32 and BF16
-- Internet connection
+- CUDA Hardware that can handle TF32 and BF16 computations
 
 ## Guides
 
@@ -38,7 +43,7 @@ If there are any questions, feel free to open an issue.
 1. Choose parameters inside `code/train.py`
 2. Run `python code/train.py` (requires adequate hardware)
 3. Run `python code/eval.py` (requires adequate hardware)
-4. Results are printed into cli (or `logs/`)
+4. Results are printed into CLI (or `logs/`)
 
 ### Using SLURM
 
